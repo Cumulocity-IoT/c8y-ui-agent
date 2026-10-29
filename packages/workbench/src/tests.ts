@@ -27,9 +27,9 @@ export interface TestResult {
   spec: string
   title: string[]
   state: 'passed' | 'failed' | 'pending' | 'skipped'
-  /** Where it failed: its own body (with its beforeEach and afterEach hooks, as the gap report counts them) … */
+  /** Where it failed: its own body, or a hook (also its own beforeEach and afterEach, as Cypress reports them). */
   failedIn?: 'test' | 'hook'
-  /** … or this hook: `before each`, `before all`, `after each`, `after all`. */
+  /** The failed hook: `before each`, `before all`, `after each`, `after all`. */
   hook?: string
   error?: string
   /** More than 1 when it passed only on a retry. */

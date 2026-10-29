@@ -21,9 +21,18 @@ const failure = (error: unknown): CallToolResult => ({
   content: [{ type: 'text', text: [errorMessage(error), ...(error instanceof PreviewError ? ['', 'Last output:', ...error.log] : [])].join('\n') }],
 })
 
-export function createServer(target: Target): { server: McpServer, previews: Previews } {
+export interface Workbench {
+  server: McpServer
+  previews: Previews
+  /** Abort a running proof and wait for its cleanup (worktrees, dev servers). */
+  stopProof: () => Promise<void>
+}
+
+export function createServer(target: Target): Workbench {
   const server = new McpServer({ name: 'c8y-ui-workbench', version })
   const previews = new Previews(target)
+  // One proof at a time: two would share the checkout's .git/worktrees and compete for CPU, which makes tests flaky.
+  let proof: { abort: AbortController, done: Promise<unknown> } | undefined
 
   server.registerTool('list_apps', {
     title: 'List apps',
@@ -75,7 +84,8 @@ export function createServer(target: Target): { server: McpServer, previews: Pre
       + 'all on the emulated tenant. Verdict "regression": the tests fail on the base in their own body and pass on the change. "observed": the same, '
       + 'but an emulator gap may explain it. "not-proven": they pass on the base, fail only in a hook, or fail or are flaky on the change. '
       + '"inconclusive": a build or run failed. Test files are the files under the e2e root; everything else counts as the product change. '
-      + 'Commit or keep the change in the working tree; it is not modified. Takes 3 to 10 minutes.',
+      + 'Both sides run in git worktrees with a fresh install; files git ignores reach neither. Commit or keep the change in the working tree; '
+      + 'it is not modified. One proof at a time; takes 2 to 10 minutes.',
     inputSchema: {
       app: z.string().describe('App name from list_apps'),
       base: z.string().optional().describe('Commit without the change (default: merge base with the remote default branch)'),
@@ -83,31 +93,45 @@ export function createServer(target: Target): { server: McpServer, previews: Pre
       tests: z.array(z.string()).optional().describe('Tests that must prove the change, as "<spec> › <suite> › <test>" with the spec relative to the e2e root (default: any test of the specs)'),
     },
   }, async ({ app, base, specs, tests }, extra) => {
+    if (proof)
+      return failure('a proof is already running; wait for its result')
     const token = extra._meta?.progressToken
     let step = 0
     const log = (message: string): void => {
       if (token !== undefined)
-        void extra.sendNotification({ method: 'notifications/progress', params: { progressToken: token, progress: ++step, message } })
+        extra.sendNotification({ method: 'notifications/progress', params: { progressToken: token, progress: ++step, message } }).catch(() => {})
     }
+    const abort = new AbortController()
+    const run = proveRegression({ target, app, base, specs, tests, signal: AbortSignal.any([extra.signal, abort.signal]), log })
+    proof = { abort, done: run.catch(() => {}) }
     try {
-      return json(await proveRegression({ target, app, base, specs, tests, signal: extra.signal, log }))
+      return json(await run)
     }
     catch (error) {
       return failure(error)
     }
+    finally {
+      proof = undefined
+    }
   })
 
-  return { server, previews }
+  const stopProof = async (): Promise<void> => {
+    if (!proof)
+      return
+    proof.abort.abort(new Error('the workbench stops'))
+    await proof.done
+  }
+  return { server, previews, stopProof }
 }
 
 export async function serve(target: Target): Promise<void> {
-  const { server, previews } = createServer(target)
+  const { server, previews, stopProof } = createServer(target)
   let closing = false
   const shutdown = async (): Promise<void> => {
     if (closing)
       return
     closing = true
-    await previews.closeAll()
+    await Promise.all([stopProof(), previews.closeAll()])
     await server.close()
     process.exit(0)
   }

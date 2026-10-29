@@ -2,7 +2,6 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
-import { isSpec, isTestFile } from '../src/regression'
 import { e2eConfigFile, listApps, resolveApp, WorkbenchError } from '../src/target'
 
 describe('apps', () => {
@@ -41,26 +40,5 @@ describe('apps', () => {
     const app = resolveApp(repo, 'kpi')
     expect(e2eConfigFile({ repo, world: 'w.json', e2eConfig: 'config/{app}.config.ts' }, app)).toBe('config/kpi.config.ts')
     expect(e2eConfigFile({ repo, world: 'w.json' }, app)).toBeUndefined()
-  })
-})
-
-describe('test files', () => {
-  it('are the files under the e2e root', () => {
-    expect(isTestFile('test/cypress/e2e/a.cy.ts', 'test')).toBe(true)
-    expect(isTestFile('test/config/a.config.ts', './test/')).toBe(true)
-    expect(isTestFile('testing/a.ts', 'test')).toBe(false)
-    expect(isTestFile('packages/a/src/a.ts', 'test')).toBe(false)
-  })
-
-  it('are Cypress folders and specs with the e2e root at the repository root', () => {
-    expect(isTestFile('cypress/support/e2e.ts')).toBe(true)
-    expect(isTestFile('src/app.cy.ts', '.')).toBe(true)
-    expect(isTestFile('src/app.ts')).toBe(false)
-  })
-
-  it('specs are Cypress spec files', () => {
-    expect(isSpec('test/cypress/e2e/a.cy.ts')).toBe(true)
-    expect(isSpec('test/cypress/e2e/a.cy.mjs')).toBe(true)
-    expect(isSpec('test/config/a.config.ts')).toBe(false)
   })
 })

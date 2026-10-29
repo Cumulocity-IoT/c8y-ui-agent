@@ -33,14 +33,15 @@ export class PreviewError extends Error {
 
 /**
  * startDev runs `pnpm exec ng serve` in the app's directory, and pnpm finds no `ng` in a workspace package: the
- * Angular CLI is installed at the workspace root. Put the root's bin directory on the PATH, which pnpm exec searches
- * too. Not needed once startDev takes an Angular project, as runE2e does.
+ * Angular CLI is installed at the workspace root. Add the root's bin directory to the PATH, which pnpm exec searches
+ * too. At the end: the repository's bins must not shadow git, pnpm or node for the workbench's other processes.
+ * Not needed once startDev takes an Angular project, as runE2e does.
  */
 function useWorkspaceBin(repo: string, dir: string): void {
   const bin = join(repo, 'node_modules', '.bin')
   const path = process.env.PATH ?? ''
   if (dir && existsSync(bin) && !path.split(delimiter).includes(bin))
-    process.env.PATH = `${bin}${delimiter}${path}`
+    process.env.PATH = `${path}${delimiter}${bin}`
 }
 
 export class Previews {
@@ -79,6 +80,11 @@ export class Previews {
     // A dev server that stops on its own ends the preview.
     void session.done.then(() => this.running.delete(id))
     return preview
+  }
+
+  /** Resolves when the preview has ended: preview_down, or its dev server stopped on its own. */
+  ended(id: string): Promise<void> {
+    return this.running.get(id)?.session.done.then(() => {}) ?? Promise.resolve()
   }
 
   list(): Preview[] {

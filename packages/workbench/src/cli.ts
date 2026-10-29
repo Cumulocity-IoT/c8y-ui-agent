@@ -88,17 +88,21 @@ async function main(): Promise<void> {
       const preview = await previews.up(app)
       process.stdout.write(`${JSON.stringify(preview, null, 2)}\n`)
       // The dev server runs in its own process group: stop it on SIGTERM too, or it outlives the preview.
-      await new Promise<void>((done) => {
-        const stop = (): void => void previews.closeAll().then(done)
-        process.once('SIGINT', stop)
-        process.once('SIGTERM', stop)
-      })
+      const stop = (): void => void previews.closeAll()
+      process.once('SIGINT', stop)
+      process.once('SIGTERM', stop)
+      await previews.ended(preview.id)
       return
     }
     case 'prove-regression': {
       if (!app)
         throw new WorkbenchError('prove-regression needs an app')
-      const result = await proveRegression({ target: requireWorld(target()), app, base: values.base, specs: values.spec, tests: values.test, log: progress })
+      // Abort on SIGINT and SIGTERM, so that the dev servers, worktrees and temp files are removed.
+      const abort = new AbortController()
+      const stop = (): void => abort.abort(new Error('interrupted'))
+      process.once('SIGINT', stop)
+      process.once('SIGTERM', stop)
+      const result = await proveRegression({ target: requireWorld(target()), app, base: values.base, specs: values.spec, tests: values.test, log: progress, signal: abort.signal })
       process.stdout.write(`${JSON.stringify(result, null, 2)}\n`)
       process.exitCode = result.verdict === 'regression' ? 0 : 1
       return

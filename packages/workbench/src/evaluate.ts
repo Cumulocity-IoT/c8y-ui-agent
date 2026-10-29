@@ -29,7 +29,7 @@ export interface Evaluation {
   /** The tests that prove the change. */
   proving: string[]
   tests: TestVerdict[]
-  /** Unexpected gaps that touch the tests (or cannot be attributed), from all runs. */
+  /** Unexpected gaps of all runs that concern a tested spec, or cannot be attributed. */
   gaps: GapRecord[]
 }
 
@@ -42,19 +42,27 @@ const outcome = (test: TestResult | undefined): string => {
 }
 
 /**
- * Whether a gap may have affected a test: the gap report attributes it to the test (its body and its each-hooks,
- * or what follows it), to its spec's `before all` hooks, or to no test at all (a repository whose Cypress support
- * file does not report tests to the emulator).
+ * Whether a gap concerns a tested spec: the gap report attributes it to one of the spec's tests or hooks
+ * (`<spec> › …`), or to no test at all (a repository whose Cypress support file does not report tests to the
+ * emulator). Any test of a spec can set up state that its other tests depend on, so the whole spec counts.
  */
-export function gapTouches(gap: GapRecord, test: Pick<TestResult, 'id' | 'spec'>): boolean {
+export function gapTouches(gap: GapRecord, spec: string): boolean {
   if (!gap.tests || gap.tests.length === 0)
     return true
-  return gap.tests.some(name => name === test.id || name === `${test.id} › after` || name === `${test.spec} › before all`)
+  return gap.tests.some(name => name.startsWith(`${spec} › `))
 }
 
 const unexpected = (run: TestRun): GapRecord[] => run.gaps.filter(gap => !gap.expected)
 
-export function evaluate(base: TestRun, changes: TestRun[], named?: string[]): Evaluation {
+export interface EvaluateOptions {
+  /** The specs that ran, relative to the e2e root: each must report tests in every change run. */
+  specs: string[]
+  /** Tests that must prove the change (default: any test of the specs). */
+  tests?: string[]
+}
+
+export function evaluate(base: TestRun, changes: TestRun[], options: EvaluateOptions): Evaluation {
+  const named = options.tests && options.tests.length > 0 ? options.tests : undefined
   const reasons: string[] = []
   for (const run of [base, ...changes]) {
     if (run.outcome !== 'completed')
@@ -63,17 +71,26 @@ export function evaluate(base: TestRun, changes: TestRun[], named?: string[]): E
   if (reasons.length > 0)
     return { verdict: 'inconclusive', reasons, proving: [], tests: [], gaps: [] }
 
+  // A spec that does not load (a missing import) reports no tests, and Cypress' exit code counts it as a failure.
+  for (const run of changes) {
+    for (const spec of options.specs) {
+      if (!run.tests.some(t => t.spec === spec))
+        reasons.push(`${spec}: no test results in ${run.label} (the spec did not load, or has no tests)`)
+    }
+    const failed = run.tests.filter(t => t.state === 'failed').length
+    if (run.exitCode !== undefined && run.exitCode > failed)
+      reasons.push(`${run.label}: Cypress reported ${run.exitCode} failures, but only ${failed} failed tests`)
+  }
+
   // The tests of the change define what was run; the base may lack a test that the change adds to an existing spec.
   const ids = [...new Set(changes.flatMap(run => run.tests.map(t => t.id)))]
-  const candidates = named && named.length > 0 ? named : ids
-  for (const id of named ?? []) {
-    if (!ids.includes(id))
-      reasons.push(`${id}: no such test in the change's runs (name tests as <spec> › <suite> › … › <test>, spec relative to the e2e root)`)
-  }
+  const missing = (named ?? []).filter(id => !ids.includes(id))
+  for (const id of missing)
+    reasons.push(`${id}: no such test in the change's runs (name tests as <spec> › <suite> › … › <test>, spec relative to the e2e root)`)
+  const candidates = named ? named.filter(id => ids.includes(id)) : ids
 
   const find = (run: TestRun, id: string): TestResult | undefined => run.tests.find(t => t.id === id)
   const tests: TestVerdict[] = []
-  const touchingGaps = new Set<GapRecord>()
 
   // Every test of the change must pass in every change run: a failure elsewhere means the change broke something.
   for (const id of ids) {
@@ -91,9 +108,6 @@ export function evaluate(base: TestRun, changes: TestRun[], named?: string[]): E
     const onChange = changes.map(run => find(run, id))
     const reference = onChange.find(Boolean) ?? onBase
     const verdict: TestVerdict = { id, spec: reference?.spec ?? '', base: outcome(onBase), change: onChange.map(outcome), proves: false }
-    for (const gap of [base, ...changes].flatMap(unexpected).filter(gap => gapTouches(gap, verdict)))
-      touchingGaps.add(gap)
-
     if (onChange.some(t => t?.state !== 'passed' || (t.attempts ?? 1) > 1))
       verdict.reason = 'does not pass on every change run'
     else if (!onBase)
@@ -109,9 +123,11 @@ export function evaluate(base: TestRun, changes: TestRun[], named?: string[]): E
     tests.push(verdict)
   }
 
+  // Unexpected gaps of any run that concern a tested spec.
+  const specs = [...new Set([...options.specs, ...tests.map(t => t.spec)])]
+  const gaps = [...new Set([base, ...changes].flatMap(unexpected).filter(gap => specs.some(spec => gapTouches(gap, spec))))]
   const proving = tests.filter(t => t.proves).map(t => t.id)
-  const gaps = [...touchingGaps]
-  if (named && named.length > 0) {
+  if (named) {
     for (const t of tests.filter(t => !t.proves))
       reasons.push(`${t.id}: ${t.reason}`)
   }
@@ -121,14 +137,13 @@ export function evaluate(base: TestRun, changes: TestRun[], named?: string[]): E
   if (reasons.length > 0)
     return { verdict: 'not-proven', reasons, proving: [], tests, gaps }
 
-  const provingGaps = gaps.filter(gap => tests.some(t => t.proves && gapTouches(gap, t)))
-  if (provingGaps.length > 0) {
-    const unattributed = provingGaps.some(gap => !gap.tests?.length)
+  if (gaps.length > 0) {
+    const unattributed = gaps.some(gap => !gap.tests?.length)
     return {
       verdict: 'observed',
       reasons: [unattributed
         ? 'the emulator could not answer some requests, and the gap report does not attribute them to tests (the Cypress support file needs @cumulocity-iot/ui-sdk/cypress from SDK 2.3): a gap may explain the outcome'
-        : 'the emulator could not answer requests of the proving tests: a gap may explain the outcome'],
+        : 'the emulator could not answer requests of the tested specs: a gap may explain the outcome'],
       proving,
       tests,
       gaps,

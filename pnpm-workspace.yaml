@@ -31,10 +31,12 @@ catalog:
 # Security fixes in transitive dependencies. Remove an entry once its parent depends on the fixed version.
 overrides:
   'undici@7': ^7.30.1         # via @cumulocity-iot/ui-sdk > @module-federation/vite
+  'body-parser@2': ^2.4.0     # via @modelcontextprotocol/sdk > express
 
 # Advisories without a fixed release, with the reason they are accepted. Recheck on every Cypress or SDK update.
 auditConfig:
   ignoreGhsas:
-    # extract-zip 2.0.1 (path traversal), via @cumulocity-iot/ui-sdk > cypress: no fixed release. Cypress uses it only
-    # to unpack its own binary, which installs here never download (ignoreScripts).
+    # extract-zip 2.0.1 (arbitrary file write and path traversal through symlinks), via @cumulocity-iot/ui-sdk > cypress:
+    # no fixed release. Cypress uses it only to unpack its own binary, which installs here never download (ignoreScripts).
     - GHSA-7pqw-9j4j-h8q3
+    - GHSA-jmr9-qjv8-65gv
