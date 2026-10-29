@@ -7,7 +7,8 @@ minimumReleaseAge: 10080
 minimumReleaseAgeExclude:
   - '@cumulocity-iot/*'
 
-# Dependencies may not run lifecycle scripts (preinstall/postinstall).
+# No lifecycle scripts (preinstall/postinstall): neither dependencies' nor this workspace's own, so `pnpm publish`
+# skips prepack/prepublishOnly too. Build explicitly before publishing.
 ignoreScripts: true
 # An unmet peer dependency fails the install.
 strictPeerDependencies: true
@@ -16,7 +17,7 @@ strictPeerDependencies: true
 trustPolicy: no-downgrade
 trustPolicyIgnoreAfter: 129600
 
-# pnpm audit --prod gates CI on high and critical advisories.
+# pnpm audit gates CI on high and critical advisories.
 audit:
   level: high
 
