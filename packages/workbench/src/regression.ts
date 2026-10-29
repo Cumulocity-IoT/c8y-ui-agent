@@ -6,10 +6,10 @@
 // Files that git ignores (cypress.env.json, .env, build output) reach neither side, so they cannot make a test fail on
 // one side only. The checkout itself is not modified.
 import { spawn } from 'node:child_process'
-import { existsSync } from 'node:fs'
-import { copyFile, lstat, mkdir, mkdtemp, readlink, rm, symlink } from 'node:fs/promises'
+import { existsSync, readFileSync } from 'node:fs'
+import { copyFile, lstat, mkdir, mkdtemp, readlink, rename, rm, symlink, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
-import { dirname, isAbsolute, join, normalize, posix, relative, resolve } from 'node:path'
+import { basename, dirname, isAbsolute, join, normalize, posix, relative, resolve } from 'node:path'
 import { evaluate } from './evaluate'
 import type { Evaluation } from './evaluate'
 import { resolveApp, WorkbenchError } from './target'
@@ -144,7 +144,8 @@ export async function prepareCheckout(repo: string, commit: string, files: Chang
   await git(repo, 'worktree', 'add', '--detach', dir, commit)
   for (const file of files) {
     const to = join(dir, file.path)
-    await rm(to, { force: true })
+    // Recursive: a path can change between a file and a directory.
+    await rm(to, { recursive: true, force: true })
     if (file.deleted)
       continue
     const from = join(repo, file.path)
@@ -152,8 +153,59 @@ export async function prepareCheckout(repo: string, commit: string, files: Chang
     const stat = await lstat(from)
     if (stat.isSymbolicLink())
       await symlink(await readlink(from), to)
+    else if (stat.isDirectory())
+      throw new WorkbenchError(`${file.path}: a submodule or directory entry; submodules are not supported`)
     else
       await copyFile(from, to)
+  }
+}
+
+const PROOF_DIR = 'c8y-ui-workbench-proof-'
+// The temp directories of the proofs in progress in this process, for shutdown.
+const active = new Map<string, string>()
+
+/**
+ * Remove a proof's temp directory and its worktrees fast enough for a client that kills the server seconds after
+ * disconnecting: rename the directory (instant), let `git worktree prune` drop the registrations of the now missing
+ * worktrees, and delete the files in a detached process that outlives this one. The delay lets dev servers that were
+ * just told to stop leave the directory first.
+ */
+async function discard(repo: string, temp: string): Promise<void> {
+  active.delete(temp)
+  const trash = `${temp}-discarded`
+  await rename(temp, trash).catch(() => {})
+  await git(repo, 'worktree', 'prune').catch(() => {})
+  spawn('sh', ['-c', 'sleep 5; rm -rf "$0"', existsSync(trash) ? trash : temp], { detached: true, stdio: 'ignore' }).unref()
+}
+
+/** Discard every proof in progress in this process: on shutdown, after aborting them. */
+export async function discardActiveProofs(): Promise<void> {
+  await Promise.all([...active].map(([temp, repo]) => discard(repo, temp)))
+}
+
+const alive = (pid: number): boolean => {
+  try {
+    process.kill(pid, 0)
+    return true
+  }
+  catch (error) {
+    return (error as NodeJS.ErrnoException).code === 'EPERM'
+  }
+}
+
+/** Worktrees of proofs whose process is gone (killed before its cleanup), found through their pid file. */
+async function discardStaleProofs(repo: string): Promise<void> {
+  const list = await git(repo, 'worktree', 'list', '--porcelain')
+  const temps = new Set(list.split('\n').filter(line => line.startsWith('worktree ')).map(line => dirname(line.slice('worktree '.length)))
+    .filter(temp => basename(temp).startsWith(PROOF_DIR)))
+  for (const temp of temps) {
+    let pid = 0
+    try {
+      pid = Number(readFileSync(join(temp, 'pid'), 'utf8'))
+    }
+    catch {}
+    if (!pid || !alive(pid))
+      await discard(repo, temp)
   }
 }
 
@@ -191,8 +243,9 @@ export async function proveRegression(options: ProveRegressionOptions): Promise<
   const baseRef = options.base ?? await defaultBase(repo)
   const base = (await git(repo, 'rev-parse', '--verify', '--end-of-options', `${baseRef}^{commit}`)).trim()
   const head = (await git(repo, 'rev-parse', 'HEAD')).trim()
-  // Worktrees of runs that were killed (their directories are gone).
+  // Worktrees of proofs that were killed: their directories are gone, or their process is.
   await git(repo, 'worktree', 'prune').catch(() => {})
+  await discardStaleProofs(repo).catch(() => {})
 
   const { changes, ignored } = await changedFiles(repo, base)
   const testFiles = changes.filter(c => isTestFile(c.path, e2eRoot, target.e2eConfig && posix.join(e2eRoot, target.e2eConfig)))
@@ -214,12 +267,20 @@ export async function proveRegression(options: ProveRegressionOptions): Promise<
   if (productFiles.length === 0)
     return { ...result, verdict: 'not-proven', reasons: ['no product change: every changed file is a test file, so both sides run the same code'], proving: [], tests: [], gaps: [], runs: [] }
 
-  const temp = await mkdtemp(join(tmpdir(), 'c8y-ui-workbench-proof-'))
+  const temp = await mkdtemp(join(tmpdir(), PROOF_DIR))
+  active.set(temp, repo)
+  await writeFile(join(temp, 'pid'), String(process.pid))
   const checkouts = { base: join(temp, 'base'), change: join(temp, 'change') }
   try {
     log(`checkouts of ${base.slice(0, 12)}: base with ${testFiles.length} test files, change with ${changes.length} changed files`)
-    await prepareCheckout(repo, base, testFiles, checkouts.base)
-    await prepareCheckout(repo, base, changes, checkouts.change)
+    try {
+      await prepareCheckout(repo, base, testFiles, checkouts.base)
+      await prepareCheckout(repo, base, changes, checkouts.change)
+    }
+    catch (error) {
+      const failed: TestRun = { label: 'checkout', outcome: 'error', tests: [], gaps: [], error: `checkout failed: ${(error as Error).message}` }
+      return { ...result, ...evaluate(failed, [], { specs: [], tests: options.tests }), runs: [failed] }
+    }
     log('installing dependencies in both checkouts')
     const [baseInstall, changeInstall] = await both(installCheckout(checkouts.base, scoped, 'base', signal), installCheckout(checkouts.change, scoped, 'change', signal))
     if (baseInstall || changeInstall) {
@@ -246,9 +307,6 @@ export async function proveRegression(options: ProveRegressionOptions): Promise<
     return { ...result, ...evaluate(baseRun, runs.slice(1), { specs: specsInRoot, tests: options.tests }), runs }
   }
   finally {
-    for (const dir of Object.values(checkouts))
-      await git(repo, 'worktree', 'remove', '--force', dir).catch(() => {})
-    await rm(temp, { recursive: true, force: true })
-    await git(repo, 'worktree', 'prune').catch(() => {})
+    await discard(repo, temp)
   }
 }

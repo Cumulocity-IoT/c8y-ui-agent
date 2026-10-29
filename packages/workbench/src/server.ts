@@ -6,7 +6,7 @@ import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js'
 import type { CallToolResult } from '@modelcontextprotocol/sdk/types.js'
 import { z } from 'zod'
 import { PreviewError, Previews } from './preview'
-import { proveRegression } from './regression'
+import { discardActiveProofs, proveRegression } from './regression'
 import { listApps } from './target'
 import type { Target } from './target'
 import { errorMessage } from './util'
@@ -115,11 +115,14 @@ export function createServer(target: Target): Workbench {
     }
   })
 
+  // A client that disconnects kills the server seconds later (the MCP SDK: SIGTERM after 2 s, SIGKILL after 4 s).
+  // Abort, which tells the dev servers and Cypress to stop, discard the worktrees at once, then wait briefly.
   const stopProof = async (): Promise<void> => {
     if (!proof)
       return
     proof.abort.abort(new Error('the workbench stops'))
-    await proof.done
+    await discardActiveProofs()
+    await Promise.race([proof.done, new Promise(r => setTimeout(r, 1500))])
   }
   return { server, previews, stopProof }
 }

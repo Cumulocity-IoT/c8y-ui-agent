@@ -87,6 +87,27 @@ describe('proveRegression', () => {
     expect(git('worktree', 'list').split('\n')).toHaveLength(1)
   })
 
+  it('discards the worktrees of proofs whose process is gone', async () => {
+    const stale = mkdtempSync(join(tmpdir(), 'c8y-ui-workbench-proof-'))
+    git('worktree', 'add', '--detach', join(stale, 'base'), base)
+    writeFileSync(join(stale, 'pid'), '999999')
+    const running = mkdtempSync(join(tmpdir(), 'c8y-ui-workbench-proof-'))
+    git('worktree', 'add', '--detach', join(running, 'base'), base)
+    writeFileSync(join(running, 'pid'), String(process.pid))
+    try {
+      write('test/cypress/e2e/a.cy.ts', 'changed\n')
+      await proveRegression({ target: { repo, world: 'w.json', e2eRoot: 'test' }, app: basename(repo), base })
+      const worktrees = git('worktree', 'list')
+      expect(worktrees).not.toContain(stale.split('/').pop())
+      expect(worktrees).toContain(running.split('/').pop())
+      expect(existsSync(stale)).toBe(false)
+    }
+    finally {
+      git('worktree', 'remove', '--force', join(running, 'base'))
+      rmSync(running, { recursive: true, force: true })
+    }
+  })
+
   it('rejects specs and an e2e root outside the repository', async () => {
     write('src/app.ts', 'export const a = 2\n')
     await expect(proveRegression({ target: { repo, world: 'w.json', e2eRoot: 'test' }, app: basename(repo), base, specs: ['../x.cy.ts'] })).rejects.toThrow('outside the repository')

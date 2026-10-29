@@ -97,11 +97,16 @@ async function main(): Promise<void> {
     case 'prove-regression': {
       if (!app)
         throw new WorkbenchError('prove-regression needs an app')
-      // Abort on SIGINT and SIGTERM, so that the dev servers, worktrees and temp files are removed.
+      // Abort on SIGINT and SIGTERM, so that the dev servers, worktrees and temp files are removed. Further signals
+      // must not kill the process before that.
       const abort = new AbortController()
-      const stop = (): void => abort.abort(new Error('interrupted'))
-      process.once('SIGINT', stop)
-      process.once('SIGTERM', stop)
+      const stop = (): void => {
+        if (!abort.signal.aborted)
+          progress('interrupted: cleaning up …')
+        abort.abort(new Error('interrupted'))
+      }
+      process.on('SIGINT', stop)
+      process.on('SIGTERM', stop)
       const result = await proveRegression({ target: requireWorld(target()), app, base: values.base, specs: values.spec, tests: values.test, log: progress, signal: abort.signal })
       process.stdout.write(`${JSON.stringify(result, null, 2)}\n`)
       process.exitCode = result.verdict === 'regression' ? 0 : 1

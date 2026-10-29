@@ -12,7 +12,7 @@
 6. **Three runs** on the emulated tenant of the Cumulocity UI SDK (`runE2e`, `ng serve`), each with its own ports: the base and the first change run at the same time, then a second change run. The second change run is skipped when the first round decides: a run did not complete, or no test failed on the base in its own body.
 7. **Results.** A Cypress reporter (`reporter/index.cjs`, set with `CYPRESS_REPORTER`, which overrides the reporter of the repository's Cypress config file) records each test: passed, failed in its body, failed in a hook, pending, or skipped, and the attempts. The emulator's gap report lists the requests it could not answer as a tenant would, with the tests that sent them.
 
-One proof runs at a time per workbench. Cancelling it (MCP cancellation, SIGINT, SIGTERM, or the client disconnecting) stops the dev servers and Cypress and removes both worktrees.
+One proof runs at a time per workbench. Cancelling it (MCP cancellation, SIGINT, SIGTERM, or the client disconnecting) stops the dev servers and Cypress, deregisters both worktrees at once (rename, `git worktree prune`) and deletes their files in a detached process, so that cleanup survives a client that kills the server seconds after disconnecting. Each proof writes its process id into its temp directory; a later proof removes the worktrees of proofs whose process is gone.
 
 ## Verdict
 
@@ -43,7 +43,9 @@ Tests are named `<spec> › <suite> › … › <test>`, with the spec relative 
 - The lockfile at the repository root is a product file. A change to the e2e root's dependencies (`test/package.json`) therefore fails the base's frozen install: `inconclusive`.
 - A repository whose `setupNodeEvents` sets its own reporter overrides `CYPRESS_REPORTER`: Cypress reports no tests to the workbench, and the verdict is `inconclusive`.
 - Both sides use the same world file and the change's context path. A change to either is not part of the comparison.
-- Tests that need ignored files (a local `cypress.env.json`) fail on both sides.
+- Files that git ignores are missing on both sides, for the build too: a test that needs a local `cypress.env.json` fails on both sides, and an app that needs an ignored generated file does not build (`inconclusive`).
+- "No product change" means no changed file outside the tests. A change that only touches files the build does not use (a README, untracked junk that is not ignored) runs the same code on both sides; such a proof only passes if a test fails on the base by chance, which the second change run makes unlikely but does not rule out.
+- Submodules are not supported: a changed submodule gives `inconclusive`.
 
 ## Security
 
