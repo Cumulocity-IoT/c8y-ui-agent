@@ -1,0 +1,22 @@
+{
+  "name": "c8y-ui-agent-workspace",
+  "private": true,
+  "type": "module",
+  "description": "C8Y UI Agent: a GitHub App that triages, fixes, and reviews Cumulocity Web SDK apps and plugins with Claude Code.",
+  "packageManager": "pnpm@11.17.0",
+  "engines": {
+    "node": ">=22.13.0"
+  },
+  "scripts": {
+    "build": "pnpm -r --filter './packages/*' build",
+    "test": "pnpm -r --filter './packages/*' test",
+    "typecheck": "pnpm -r --filter './packages/*' typecheck",
+    "release:dry-run": "semantic-release --dry-run --no-ci"
+  },
+  "devDependencies": {
+    "@semantic-release/exec": "^7.1.0",
+    "conventional-changelog-conventionalcommits": "^9.3.1",
+    "semantic-release": "^25.0.9",
+    "typescript": "catalog:"
+  }
+}

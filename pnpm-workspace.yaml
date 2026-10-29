@@ -1,0 +1,28 @@
+packages:
+  - packages/*
+
+# Supply-chain settings, the same as in the Cumulocity UI SDK.
+# A version must be at least 7 days (10080 minutes) old before it is installed. Exclude only our own packages.
+minimumReleaseAge: 10080
+minimumReleaseAgeExclude:
+  - '@cumulocity-iot/*'
+
+# Dependencies may not run lifecycle scripts (preinstall/postinstall).
+ignoreScripts: true
+# An unmet peer dependency fails the install.
+strictPeerDependencies: true
+
+# Refuse a version published with weaker trust evidence than an earlier one of the same package.
+trustPolicy: no-downgrade
+trustPolicyIgnoreAfter: 129600
+
+# pnpm audit --prod gates CI on high and critical advisories.
+audit:
+  level: high
+
+# One version per dependency across the packages.
+catalog:
+  typescript: ^6.0.3
+  vitest: ^5.0.2
+  tsdown: ^0.23.0
+  '@types/node': ^24.12.3
