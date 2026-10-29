@@ -6,7 +6,7 @@ The App installs only in the `Cumulocity-IoT` organization. Its packages are int
 
 ## Status
 
-Phase 1 of 6: the workbench. Nothing here is ready for use yet.
+Phase 1 of 6: the workbench. `preview_up` and `prove_regression` work on the `cumulocity-ui-toolkit` pilot; `screenshot` and `check` follow. Nothing here is ready for production use yet.
 
 | Phase | Content |
 |---|---|
@@ -22,6 +22,7 @@ Phase 1 of 6: the workbench. Nothing here is ready for use yet.
 ```
 packages/workbench/   @cumulocity-iot/c8y-ui-workbench: MCP server that previews an app on the emulated tenant and proves regressions with e2e runs
 docs/decisions.md     decisions taken and why
+docs/prove-regression.md  the rules of prove_regression
 ```
 
 Later phases add `pack/` (playbooks, skills, roles, hooks) and `.github/workflows/run.yml` (the reusable workflow that repositories call).
