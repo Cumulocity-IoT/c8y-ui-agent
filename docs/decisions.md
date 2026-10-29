@@ -1,6 +1,6 @@
 # Decisions
 
-Decisions taken for the C8Y UI Agent. Add a decision here when it is taken, with the date and the rejected alternatives.
+Decisions taken for the C8Y UI Agent. Add a decision here when it is taken, with the date and the rejected alternatives. Numbers follow the design specification; open decisions (D3 to D6, D8) are added once they are taken.
 
 ## D1: Claude Code is the agent runtime
 
@@ -32,6 +32,8 @@ Decided on 2026-10-29.
 GitHub does not let public repositories use reusable workflows stored in internal repositories, and most target repositories are public. This repository holds the reusable workflow and the agent pack, so it is public. It holds no secrets; playbooks and role prompts are readable by anyone.
 
 The agent stays unusable outside the organization: the App is registered with "Only on this account", and the packages it installs (UI SDK, workbench, Web SDK knowledge server) stay internal and need per-repository access grants. Either can be widened later.
+
+Fork pull requests are the remaining path to the internal packages: GitHub lets forks of a public repository that has access to private packages read them. Runs for external contributors therefore need a maintainer's approval, after a review of workflow changes.
 
 Rejected: an internal repository, which excludes public target repositories; a public workflow repository plus an internal agent pack package, which keeps prompts internal at the cost of one more package to release.
 

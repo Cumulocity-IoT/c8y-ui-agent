@@ -11,7 +11,8 @@ Keep knowledge in the repository, not in a private agent memory.
 ## Layout
 
 ```
-packages/workbench/   @cumulocity-iot/c8y-ui-workbench: MCP server on the Cumulocity UI SDK (preview_up, prove_regression, screenshot, check)
+packages/workbench/   @cumulocity-iot/c8y-ui-workbench: MCP server on the Cumulocity UI SDK
+                      (planned tools: preview_up, prove_regression, screenshot, check)
 ```
 
 ## Rules
@@ -19,4 +20,5 @@ packages/workbench/   @cumulocity-iot/c8y-ui-workbench: MCP server on the Cumulo
 - This repository is public. Never commit secrets, tenant URLs, tenant IDs, credentials, or customer data.
 - The workbench uses the Cumulocity UI SDK (`@cumulocity-iot/ui-sdk`) through its public API and CLI only. Fix emulator gaps in the SDK, not here.
 - Branch per change; pull request titles are conventional commits (`CONTRIBUTING.md`).
+- Do not weaken the repository settings or workflow permissions described in `CONTRIBUTING.md` → Repository setup.
 - Run `pnpm build && pnpm typecheck && pnpm test` before you open a pull request.

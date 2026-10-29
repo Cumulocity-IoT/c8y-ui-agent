@@ -10,6 +10,7 @@ permissions: {}
 
 jobs:
   conventional-commit:
+    name: conventional-commit   # required by the "Protect main" ruleset; keep the name
     runs-on: ubuntu-latest
     steps:
       - name: Check the title

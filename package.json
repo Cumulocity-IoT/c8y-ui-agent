@@ -5,7 +5,7 @@
   "description": "C8Y UI Agent: a GitHub App that triages, fixes, and reviews Cumulocity Web SDK apps and plugins with Claude Code.",
   "packageManager": "pnpm@11.17.0",
   "engines": {
-    "node": ">=22.13.0"
+    "node": ">=22.18.0"
   },
   "scripts": {
     "build": "pnpm -r --filter './packages/*' build",

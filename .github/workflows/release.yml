@@ -1,6 +1,9 @@
 # Publishes @cumulocity-iot/c8y-ui-workbench to GitHub Packages with semantic-release
 # (release.config.mjs) after CI passed: main → latest, next → prereleases (dist-tag next).
 # Whether a push releases, and which version, follows from its conventional commits.
+#
+# The build runs in a read-only job; the release job gets the write tokens and runs no build tooling
+# (install runs no lifecycle scripts: ignoreScripts in pnpm-workspace.yaml).
 name: Release
 
 on:
@@ -19,9 +22,36 @@ jobs:
       contents: read
       packages: read
 
+  build:
+    needs: ci
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: read
+    env:
+      NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86   # v6.0.10
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: pnpm
+          registry-url: https://npm.pkg.github.com
+          scope: '@cumulocity-iot'
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm build
+      - uses: actions/upload-artifact@v7
+        with:
+          name: workbench-dist
+          path: packages/workbench/dist
+          retention-days: 1
+
   release:
     name: semantic-release
-    needs: ci
+    needs: build
     runs-on: ubuntu-latest
     concurrency:
       group: release-${{ github.ref }}
@@ -31,13 +61,12 @@ jobs:
       issues: write          # "released in" comments, failure issues
       pull-requests: write   # "released in" comments
       packages: write        # publish to GitHub Packages
-    env:
-      NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
     steps:
       - uses: actions/checkout@v7
         with:
           fetch-depth: 0     # all commits and tags since the last release
-      - uses: pnpm/action-setup@v6
+          persist-credentials: false   # semantic-release pushes the tag with GITHUB_TOKEN itself
+      - uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86   # v6.0.10
       - uses: actions/setup-node@v7
         with:
           node-version: 24
@@ -45,7 +74,13 @@ jobs:
           registry-url: https://npm.pkg.github.com
           scope: '@cumulocity-iot'
       - run: pnpm install --frozen-lockfile
-      - run: pnpm build
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - uses: actions/download-artifact@v8
+        with:
+          name: workbench-dist
+          path: packages/workbench/dist
       - run: pnpm exec semantic-release
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}   # pnpm publish

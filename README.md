@@ -31,7 +31,7 @@ Later phases add `pack/` (playbooks, skills, roles, hooks) and `.github/workflow
 One version line for everything in this repository, released by semantic-release from conventional commits:
 
 - The workbench is published to GitHub Packages as `@cumulocity-iot/c8y-ui-workbench`.
-- The tag `v<version>` versions the reusable workflow and the agent pack. From 1.0.0, a moving major tag (`v1`) lets repositories call `run.yml@v1`.
+- The tag `v<version>` versions the reusable workflow and the agent pack. With the reusable workflow (phase 3), a moving major tag lets repositories call `run.yml@v1`; while the version is 0.x, they pin an exact tag.
 
 Development and release steps: [CONTRIBUTING.md](CONTRIBUTING.md).
 
