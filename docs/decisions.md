@@ -46,3 +46,11 @@ GitHub derives the App's slug from its display name: handle `c8y-ui-agent`, bot 
 An App cannot be mentioned like a user; the filter job matches the text `@c8y-ui-agent`. The organization registers the user login `c8y-ui-agent` as a placeholder machine account, so nobody else can take the handle and receive the mentions.
 
 Decided on 2026-10-29.
+
+## D10: The workbench runs on Linux and macOS only
+
+The agent runs in GitHub Actions on Linux runners; developers run the workbench locally on macOS or Linux. The workbench's `package.json` declares `"os": ["darwin", "linux"]`, so an install on Windows fails at once instead of in the middle of a proof.
+
+Rejected: Windows support. It needs a process tree stop in the UI SDK (`startDev` and `runE2e` stop only the direct child on Windows), a cleanup without renaming directories that running processes still use, a way to start `pnpm` and `npm` without `sh`, and Windows runners in CI. It can be added once a user needs it, after the SDK change.
+
+Decided on 2026-11-04.

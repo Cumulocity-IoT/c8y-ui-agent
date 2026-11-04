@@ -1,7 +1,13 @@
-import { createRequire } from 'node:module'
-
-// Read at runtime: semantic-release sets the version after the build.
-const pkg = createRequire(import.meta.url)('../package.json') as { version: string }
-
-/** The workbench version, as published. */
-export const version: string = pkg.version
+// The workbench as a library: the same operations as the MCP tools.
+export { evaluate, gapTouches } from './evaluate'
+export type { EvaluateOptions, Evaluation, TestVerdict, Verdict } from './evaluate'
+export { PreviewError, Previews } from './preview'
+export type { Preview } from './preview'
+export { changedFiles, discardActiveProofs, isBuildOutput, isSpec, isTestFile, prepareCheckout, proveRegression } from './regression'
+export type { Change, ProveRegressionOptions, RegressionResult } from './regression'
+export { createServer, serve, version } from './server'
+export type { Workbench } from './server'
+export { listApps, resolveApp, WorkbenchError } from './target'
+export type { App, AuthMode, Target } from './target'
+export { readResults, REPORTER, runTests, testId } from './tests'
+export type { RunTestsOptions, TestResult, TestRun } from './tests'
