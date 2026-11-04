@@ -7,7 +7,7 @@
 // one side only. The checkout itself is not modified.
 import { spawn } from 'node:child_process'
 import { existsSync, readFileSync } from 'node:fs'
-import { copyFile, lstat, mkdir, mkdtemp, readlink, rename, rm, symlink, writeFile } from 'node:fs/promises'
+import { copyFile, lstat, mkdir, mkdtemp, readdir, readlink, rename, rm, symlink, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { basename, dirname, isAbsolute, join, normalize, posix, relative, resolve } from 'node:path'
 import { evaluate } from './evaluate'
@@ -139,10 +139,15 @@ async function install(dir: string, log: (line: string) => void, signal?: AbortS
     throw new WorkbenchError(`${dir}: no pnpm-lock.yaml or package-lock.json; other package managers are not supported yet`)
 }
 
-/** A worktree of `commit` at `dir` with `files` taken from the repository's working tree (deleted ones removed). */
-export async function prepareCheckout(repo: string, commit: string, files: Change[], dir: string): Promise<void> {
+/**
+ * A worktree of `commit` at `dir` with `files` taken from the repository's working tree (deleted ones removed). Stops
+ * between files once aborted: a copy after a discard would recreate the directory.
+ */
+export async function prepareCheckout(repo: string, commit: string, files: Change[], dir: string, signal?: AbortSignal): Promise<void> {
+  signal?.throwIfAborted()
   await git(repo, 'worktree', 'add', '--detach', dir, commit)
   for (const file of files) {
+    signal?.throwIfAborted()
     const to = join(dir, file.path)
     // Recursive: a path can change between a file and a directory.
     await rm(to, { recursive: true, force: true })
@@ -161,6 +166,7 @@ export async function prepareCheckout(repo: string, commit: string, files: Chang
 }
 
 const PROOF_DIR = 'c8y-ui-workbench-proof-'
+const DISCARDED = '-discarded'
 // The temp directories of the proofs in progress in this process, for shutdown.
 const active = new Map<string, string>()
 
@@ -169,13 +175,21 @@ const active = new Map<string, string>()
  * disconnecting: rename the directory (instant), let `git worktree prune` drop the registrations of the now missing
  * worktrees, and delete the files in a detached process that outlives this one. The delay lets dev servers that were
  * just told to stop leave the directory first.
+ *
+ * The delete covers both paths and starts before the prune: a step that was still writing can recreate `temp` after a
+ * first discard (then the rename fails), and a process killed during the prune must not leave `trash` behind.
  */
-async function discard(repo: string, temp: string): Promise<void> {
+export async function discard(repo: string, temp: string): Promise<void> {
   active.delete(temp)
-  const trash = `${temp}-discarded`
+  const trash = `${temp}${DISCARDED}`
   await rename(temp, trash).catch(() => {})
+  deleteDetached([temp, trash], 5)
   await git(repo, 'worktree', 'prune').catch(() => {})
-  spawn('sh', ['-c', 'sleep 5; rm -rf "$0"', existsSync(trash) ? trash : temp], { detached: true, stdio: 'ignore' }).unref()
+}
+
+/** Delete `paths` after `delay` seconds in a detached process that outlives this one. */
+function deleteDetached(paths: string[], delay: number): void {
+  spawn('sh', ['-c', `sleep ${delay}; rm -rf "$@"`, 'sh', ...paths], { detached: true, stdio: 'ignore' }).unref()
 }
 
 /** Discard every proof in progress in this process: on shutdown, after aborting them. */
@@ -193,8 +207,14 @@ const alive = (pid: number): boolean => {
   }
 }
 
-/** Worktrees of proofs whose process is gone (killed before its cleanup), found through their pid file. */
+/**
+ * Worktrees of proofs whose process is gone (killed before its cleanup), found through their pid file, and discarded
+ * proof directories whose delete never started (killed between the rename and the delete), in any repository.
+ */
 async function discardStaleProofs(repo: string): Promise<void> {
+  const discarded = (await readdir(tmpdir()).catch(() => [])).filter(name => name.startsWith(PROOF_DIR) && name.endsWith(DISCARDED))
+  if (discarded.length > 0)
+    deleteDetached(discarded.map(name => join(tmpdir(), name)), 0)
   const list = await git(repo, 'worktree', 'list', '--porcelain')
   const temps = new Set(list.split('\n').filter(line => line.startsWith('worktree ')).map(line => dirname(line.slice('worktree '.length)))
     .filter(temp => basename(temp).startsWith(PROOF_DIR)))
@@ -267,17 +287,20 @@ export async function proveRegression(options: ProveRegressionOptions): Promise<
   if (productFiles.length === 0)
     return { ...result, verdict: 'not-proven', reasons: ['no product change: every changed file is a test file, so both sides run the same code'], proving: [], tests: [], gaps: [], runs: [] }
 
+  // The steps until the install take no signal: check it between them, so that an aborted proof creates nothing more.
+  signal?.throwIfAborted()
   const temp = await mkdtemp(join(tmpdir(), PROOF_DIR))
   active.set(temp, repo)
-  await writeFile(join(temp, 'pid'), String(process.pid))
   const checkouts = { base: join(temp, 'base'), change: join(temp, 'change') }
   try {
+    await writeFile(join(temp, 'pid'), String(process.pid))
     log(`checkouts of ${base.slice(0, 12)}: base with ${testFiles.length} test files, change with ${changes.length} changed files`)
     try {
-      await prepareCheckout(repo, base, testFiles, checkouts.base)
-      await prepareCheckout(repo, base, changes, checkouts.change)
+      await prepareCheckout(repo, base, testFiles, checkouts.base, signal)
+      await prepareCheckout(repo, base, changes, checkouts.change, signal)
     }
     catch (error) {
+      signal?.throwIfAborted()
       const failed: TestRun = { label: 'checkout', outcome: 'error', tests: [], gaps: [], error: `checkout failed: ${(error as Error).message}` }
       return { ...result, ...evaluate(failed, [], { specs: [], tests: options.tests }), runs: [failed] }
     }

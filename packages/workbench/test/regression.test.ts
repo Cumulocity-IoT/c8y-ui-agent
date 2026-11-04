@@ -1,9 +1,9 @@
 import { execFileSync } from 'node:child_process'
-import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readlinkSync, rmSync, symlinkSync, unlinkSync, writeFileSync } from 'node:fs'
+import { chmodSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, readlinkSync, renameSync, rmSync, symlinkSync, unlinkSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { basename, dirname, join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
-import { changedFiles, isSpec, isTestFile, prepareCheckout, proveRegression } from '../src/regression'
+import { changedFiles, discard, isSpec, isTestFile, prepareCheckout, proveRegression } from '../src/regression'
 
 let repo: string
 let base: string
@@ -75,6 +75,36 @@ describe('prepareCheckout', () => {
       rmSync(dirname(dir), { recursive: true, force: true })
     }
   })
+
+  it('creates nothing once aborted', async () => {
+    const dir = join(mkdtempSync(join(tmpdir(), 'workbench-checkout-')), 'co')
+    try {
+      await expect(prepareCheckout(repo, base, [], dir, AbortSignal.abort(new Error('stop')))).rejects.toThrow('stop')
+      expect(existsSync(dir)).toBe(false)
+      expect(git('worktree', 'list').split('\n')).toHaveLength(1)
+    }
+    finally {
+      rmSync(dirname(dir), { recursive: true, force: true })
+    }
+  })
+})
+
+const proofDirs = (): string[] => readdirSync(tmpdir()).filter(name => name.startsWith('c8y-ui-workbench-proof-'))
+async function gone(...paths: string[]): Promise<boolean> {
+  for (let i = 0; i < 60 && paths.some(existsSync); i++)
+    await new Promise(r => setTimeout(r, 200))
+  return !paths.some(existsSync)
+}
+
+describe('discard', () => {
+  it('deletes a proof directory that a step recreated after a first discard', async () => {
+    const temp = mkdtempSync(join(tmpdir(), 'c8y-ui-workbench-proof-'))
+    mkdirSync(join(temp, 'base'))
+    await discard(repo, temp)
+    mkdirSync(join(temp, 'change', 'src'), { recursive: true })
+    await discard(repo, temp)
+    expect(await gone(temp, `${temp}-discarded`)).toBe(true)
+  }, 20_000)
 })
 
 describe('proveRegression', () => {
@@ -106,6 +136,26 @@ describe('proveRegression', () => {
       git('worktree', 'remove', '--force', join(running, 'base'))
       rmSync(running, { recursive: true, force: true })
     }
+  })
+
+  it('deletes discarded proof directories that were left behind', async () => {
+    const temp = mkdtempSync(join(tmpdir(), 'c8y-ui-workbench-proof-'))
+    mkdirSync(join(temp, 'base'))
+    const left = `${temp}-discarded`
+    renameSync(temp, left)
+    write('src/app.ts', 'export const a = 2\n')
+    write('test/cypress/e2e/a.cy.ts', 'changed\n')
+    await proveRegression({ target: { repo, world: 'w.json', e2eRoot: 'test' }, app: basename(repo), base })
+    expect(await gone(left)).toBe(true)
+  }, 20_000)
+
+  it('creates no proof directory once aborted', async () => {
+    write('src/app.ts', 'export const a = 2\n')
+    write('test/cypress/e2e/a.cy.ts', 'changed\n')
+    const before = proofDirs()
+    await expect(proveRegression({ target: { repo, world: 'w.json', e2eRoot: 'test' }, app: basename(repo), base, signal: AbortSignal.abort(new Error('stop')) })).rejects.toThrow('stop')
+    expect(proofDirs().filter(name => !before.includes(name))).toEqual([])
+    expect(git('worktree', 'list').split('\n')).toHaveLength(1)
   })
 
   it('rejects specs and an e2e root outside the repository', async () => {
