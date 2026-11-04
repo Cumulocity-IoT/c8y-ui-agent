@@ -2,7 +2,7 @@
 
 Model Context Protocol (MCP) server for the C8Y UI Agent. It serves a Cumulocity Web SDK app on the emulated tenant of the Cumulocity UI SDK (`@cumulocity-iot/ui-sdk`) and proves changes with e2e (Cypress) runs. `prove_regression` runs in git worktrees outside the checkout; a preview runs the dev server in the checkout, which writes build output (`dist/`, `.angular/`) as the repository's own serve script does.
 
-Requires Node 22.13 or later, and a repository with its dependencies installed (pnpm or npm). Install from GitHub Packages (`@cumulocity-iot:registry=https://npm.pkg.github.com`).
+Requires Node 22.13 or later, and a repository with its dependencies installed (pnpm or npm). Install from GitHub Packages (`@cumulocity-iot:registry=https://npm.pkg.github.com`), with a token that has `read:packages`. The package is private: ask a maintainer of this repository for Read access for your team.
 
 ## Tools
 

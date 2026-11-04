@@ -39,6 +39,8 @@ Rejected: an internal repository, which excludes public target repositories; a p
 
 Decided on 2026-10-29.
 
+Update on 2026-11-04: the organization lets only owners change a package's visibility, so the workbench stays private for now. Teams that use it get the Read role under the package's Manage access; repositories get Manage Actions access as before. Internal remains the target.
+
 ## D9: The App is named "C8Y UI Agent", handle `@c8y-ui-agent`
 
 GitHub derives the App's slug from its display name: handle `c8y-ui-agent`, bot login `c8y-ui-agent[bot]`, matching the repository name. C8Y is a widely recognized abbreviation for Cumulocity; `cumulocity-ui-agent` is too long to type in every mention.
