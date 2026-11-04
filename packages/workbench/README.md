@@ -21,15 +21,20 @@ The server takes the repository's settings as options. Discovery will fill them 
 | Option | Meaning |
 |---|---|
 | `--repo <dir>` | The repository (default: the working directory) |
-| `--world <file>` | World file the emulator serves, relative to the repository; required |
+| `--world <file>` | World file the emulator serves, relative to the repository or absolute; required |
 | `--e2e-root <dir>` | Cypress project directory, relative to the repository. Files under it are tests; everything else is the product change. |
 | `--e2e-config <file>` | Cypress config file, relative to the e2e root; `{app}` is replaced by the app name |
 | `--e2e-auth <mode>` | Emulator login mode in e2e runs: `open` (default) or `login` |
 | `--e2e-env <K=V>` | More Cypress environment, repeatable; `{devUrl}` and `{mockUrl}` are replaced with the run's URLs |
 
-Claude Code, for `cumulocity-ui-toolkit`:
+The world file must exist before a preview or a proof starts. Create it with the UI SDK, `c8y-ui world pull` (part of a real tenant, through the active go-c8y-cli session) or `c8y-ui world export` (a running mock's state), or copy the SDK's template world (`node_modules/@cumulocity-iot/ui-sdk/templates/app/mock/world.json`).
+
+Claude Code, for `cumulocity-ui-toolkit`. The toolkit does not commit its world file; `pnpm run e2e:world:pull` writes it to `test/mock/windy-dev.json` and needs a go-c8y-cli session for its tenant:
 
 ```sh
+pnpm run e2e:world:pull
+# without a session, the template world instead:
+#   mkdir -p test/mock && cp node_modules/@cumulocity-iot/ui-sdk/templates/app/mock/world.json test/mock/windy-dev.json
 claude mcp add c8y-ui-workbench -- npx -y @cumulocity-iot/c8y-ui-workbench \
   --world test/mock/windy-dev.json --e2e-root test --e2e-config 'config/{app}.config.ts' \
   --e2e-auth login --e2e-env 'C8Y_CYPRESS_URL={devUrl}'
