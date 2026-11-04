@@ -2,7 +2,7 @@
 
 A GitHub App that works on Cumulocity Web SDK apps and plugins in their repositories: it triages issues, fixes bugs, implements features, and reviews pull requests. Each run executes in the target repository's GitHub Actions with Claude Code and proves its result on an emulated Cumulocity tenant from the Cumulocity UI SDK (`@cumulocity-iot/ui-sdk`).
 
-The App installs only in the `Cumulocity-IoT` organization. Its packages are internal.
+The App installs only in the `Cumulocity-IoT` organization. Its packages are not public: the workbench is private, with Read access granted per team.
 
 ## Status
 

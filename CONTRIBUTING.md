@@ -51,5 +51,5 @@ Done on 2026-10-29. Recheck after changes to the organization's defaults.
 
 After the first release, open the package (repository → Packages → c8y-ui-workbench) → Package settings:
 
-1. Change the visibility from private to internal. The first publish is private: an npm package inherits the repository's access permissions, not its visibility. Never set it to public; a public package cannot be made private again.
+1. Under Manage access, give the teams that use the package the Read role. The first publish is private: an npm package inherits the repository's access permissions, not its visibility, and only people and teams with explicit access to the repository count. Private is the current state; internal is the target (D7), but in this organization only owners can change a package's visibility: ask one. Never set it to public; a public package cannot be made private again.
 2. Under Manage Actions access, add the repositories whose CI installs the package.
