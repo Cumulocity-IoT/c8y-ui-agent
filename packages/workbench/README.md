@@ -27,16 +27,19 @@ The server takes the repository's settings as options. Discovery will fill them 
 | `--e2e-auth <mode>` | Emulator login mode in e2e runs: `open` (default) or `login` |
 | `--e2e-env <K=V>` | More Cypress environment, repeatable; `{devUrl}` and `{mockUrl}` are replaced with the run's URLs |
 
-The world file must exist before a preview or a proof starts. Create it with the UI SDK, `c8y-ui world pull` (part of a real tenant, through the active go-c8y-cli session) or `c8y-ui world export` (a running mock's state), or copy the SDK's template world (`node_modules/@cumulocity-iot/ui-sdk/templates/app/mock/world.json`).
+The world file must exist before a preview or a proof starts. `c8y-ui create` and `c8y-ui init` of the UI SDK add `mock/world.json`. Otherwise create one with `c8y-ui world pull` (part of a real tenant, through the active go-c8y-cli session) or `c8y-ui world export` (a running mock's state), or copy the SDK's template world (`node_modules/@cumulocity-iot/ui-sdk/templates/app/mock/world.json`). A repository that does not commit its world file pulls it first, e.g. with a package script.
 
-Claude Code, for `cumulocity-ui-toolkit`. The toolkit does not commit its world file; `pnpm run e2e:world:pull` writes it to `test/mock/windy-dev.json` and needs a go-c8y-cli session for its tenant:
+Claude Code, for an app set up with `c8y-ui create` or `c8y-ui init` (world in `mock/`, Cypress at the repository root):
 
 ```sh
-pnpm run e2e:world:pull
-# without a session, the template world instead:
-#   mkdir -p test/mock && cp node_modules/@cumulocity-iot/ui-sdk/templates/app/mock/world.json test/mock/windy-dev.json
+claude mcp add c8y-ui-workbench -- npx -y @cumulocity-iot/c8y-ui-workbench --world mock/world.json
+```
+
+For an Angular workspace with several plugins, its Cypress project in `test/` and one Cypress config per plugin, which logs in and reads the app's URL from `C8Y_CYPRESS_URL`:
+
+```sh
 claude mcp add c8y-ui-workbench -- npx -y @cumulocity-iot/c8y-ui-workbench \
-  --world test/mock/windy-dev.json --e2e-root test --e2e-config 'config/{app}.config.ts' \
+  --world mock/world.json --e2e-root test --e2e-config 'config/{app}.config.ts' \
   --e2e-auth login --e2e-env 'C8Y_CYPRESS_URL={devUrl}'
 ```
 
