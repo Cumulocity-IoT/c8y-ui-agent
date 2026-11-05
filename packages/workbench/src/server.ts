@@ -1,5 +1,6 @@
 // The workbench as a Model Context Protocol (MCP) server on stdio. Nothing else may write to stdout: every child
 // process' output goes to a callback (runTests, Previews) or to stderr.
+import { readFile } from 'node:fs/promises'
 import { createRequire } from 'node:module'
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js'
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js'
@@ -7,6 +8,7 @@ import type { CallToolResult } from '@modelcontextprotocol/sdk/types.js'
 import { z } from 'zod'
 import { PreviewError, Previews } from './preview'
 import { discardActiveProofs, proveRegression } from './regression'
+import { Screenshots, tooLargeToInline, VIEWPORT } from './screenshot'
 import { listApps } from './target'
 import type { Target } from './target'
 import { errorMessage } from './util'
@@ -24,6 +26,7 @@ const failure = (error: unknown): CallToolResult => ({
 export interface Workbench {
   server: McpServer
   previews: Previews
+  screenshots: Screenshots
   /** Abort a running proof and wait for its cleanup (worktrees, dev servers). */
   stopProof: () => Promise<void>
 }
@@ -31,6 +34,7 @@ export interface Workbench {
 export function createServer(target: Target): Workbench {
   const server = new McpServer({ name: 'c8y-ui-workbench', version })
   const previews = new Previews(target)
+  const screenshots = new Screenshots(target.screenshots)
   // One proof at a time: two would share the checkout's .git/worktrees and compete for CPU, which makes tests flaky.
   let proof: { abort: AbortController, done: Promise<unknown> } | undefined
 
@@ -76,6 +80,47 @@ export function createServer(target: Target): Workbench {
       return json({ stopped: ids })
     }
     return (await previews.down(id)) ? json({ stopped: [id] }) : failure(`no preview ${id}`)
+  })
+
+  server.registerTool('screenshot', {
+    title: 'Take a screenshot',
+    description: 'Open a page of a running preview in headless Chromium and return a PNG screenshot, with the console errors, '
+      + 'failed requests and emulator gaps seen while it loaded. Waits for the page to load, for waitFor, then until no request '
+      + 'is in flight and the DOM has not changed for 1 s, and finishes animations that end. "settled": false means requests, '
+      + 'DOM changes or animations still ran after 15 s, for example live widgets; the screenshot may not show the final state. '
+      + 'Images over 8000 px a side or 3.75 MB (long fullPage captures) are returned as a file path only. Each call starts with '
+      + 'a fresh browser session; what the page writes stays in the emulator until the preview stops.',
+    inputSchema: {
+      id: z.string().describe('Preview id from preview_up'),
+      path: z.string().optional().describe('Route in the app, e.g. "#/device/123" (default: the preview URL\'s start page)'),
+      waitFor: z.string().optional().describe('CSS selector that must be visible first, e.g. "c8y-favorites-manager"'),
+      selector: z.string().optional().describe('CSS selector of one element to capture instead of the viewport'),
+      fullPage: z.boolean().optional().describe('Capture the whole scrollable page instead of the viewport'),
+      width: z.number().int().min(VIEWPORT.width.min).max(VIEWPORT.width.max).optional().describe(`Viewport width (default ${VIEWPORT.width.default})`),
+      height: z.number().int().min(VIEWPORT.height.min).max(VIEWPORT.height.max).optional().describe(`Viewport height (default ${VIEWPORT.height.default})`),
+      language: z.string().optional().describe('Browser language for the shell\'s texts (default "en")'),
+      name: z.string().min(1).optional().describe('File name (default: "<preview id>-<n>.png")'),
+    },
+  }, async ({ id, name, ...options }, extra) => {
+    const preview = previews.get(id)
+    if (!preview)
+      return failure(`no preview ${id}; running: ${previews.list().map(p => p.id).join(', ') || 'none'}`)
+    try {
+      const shot = await screenshots.take({ ...options, url: preview.url, mockUrl: preview.mockUrl, file: screenshots.file(id, name), signal: extra.signal })
+      const png = await readFile(shot.file)
+      const tooLarge = tooLargeToInline(png)
+      return {
+        content: [
+          tooLarge
+            ? { type: 'text', text: `The image is too large to return (${tooLarge}): read ${shot.file}, or capture a selector or the viewport.` }
+            : { type: 'image', data: png.toString('base64'), mimeType: 'image/png' },
+          { type: 'text', text: JSON.stringify(shot, null, 2) },
+        ],
+      }
+    }
+    catch (error) {
+      return failure(error)
+    }
   })
 
   server.registerTool('prove_regression', {
@@ -124,17 +169,17 @@ export function createServer(target: Target): Workbench {
     await discardActiveProofs()
     await Promise.race([proof.done, new Promise(r => setTimeout(r, 1500))])
   }
-  return { server, previews, stopProof }
+  return { server, previews, screenshots, stopProof }
 }
 
 export async function serve(target: Target): Promise<void> {
-  const { server, previews, stopProof } = createServer(target)
+  const { server, previews, screenshots, stopProof } = createServer(target)
   let closing = false
   const shutdown = async (): Promise<void> => {
     if (closing)
       return
     closing = true
-    await Promise.all([stopProof(), previews.closeAll()])
+    await Promise.all([stopProof(), previews.closeAll(), screenshots.close()])
     await server.close()
     process.exit(0)
   }

@@ -20,6 +20,11 @@ export interface Target {
   e2eAuth?: AuthMode
   /** More environment for Cypress; `{devUrl}` and `{mockUrl}` are replaced with the run's URLs. */
   e2eEnv?: Record<string, string>
+  /**
+   * Directory for screenshots (default: `c8y-ui-workbench-screenshots` in the temp directory). Keep it out of the
+   * working tree, or ignore it in git: prove_regression counts untracked files as part of the change.
+   */
+  screenshots?: string
 }
 
 export interface App {

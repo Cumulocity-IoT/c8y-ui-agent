@@ -56,3 +56,17 @@ The agent runs in GitHub Actions on Linux runners; developers run the workbench 
 Rejected: Windows support. It needs a process tree stop in the UI SDK (`startDev` and `runE2e` stop only the direct child on Windows), a cleanup without renaming directories that running processes still use, a way to start `pnpm` and `npm` without `sh`, and Windows runners in CI. It can be added once a user needs it, after the SDK change.
 
 Decided on 2026-11-04.
+
+## D11: Screenshots use Playwright with Chromium
+
+The workbench takes screenshots with `playwright-core` in headless Chromium: Playwright's own Chromium when installed, otherwise the installed Google Chrome (`channel: 'chrome'`), which GitHub's Ubuntu runners have. `playwright-core` downloads no browser on install. One browser serves all screenshots; each screenshot gets a fresh browser context.
+
+A screenshot waits until no HTTP request is in flight and the DOM has not changed for 1 s, at most 15 s. The shell slides its navigator in about 0.7 s after its last request, so waiting for the network alone captures it half open. Running animations that end are then finished on the page, and the page must be quiet again: Playwright's `animations: 'disabled'` finishes them at the capture too, but their end handlers run after it has measured the page. The emulator's gap report (`/_mock/gaps?since=`) adds the requests the emulator could not answer while the page loaded.
+
+Rejected:
+
+- `cy.screenshot` in a Cypress run: a spec file and a Cypress start (10 s or more) per screenshot, and the repository's Cypress setup.
+- The agent's own browser tool (Playwright MCP server): no gap report, and every agent repeats the waiting and the route handling. It stays useful for exploring a preview.
+- A screenshot API in the UI SDK: the SDK has no browser dependency. The workbench can move to one if the SDK adds it.
+
+Decided on 2026-11-05.
