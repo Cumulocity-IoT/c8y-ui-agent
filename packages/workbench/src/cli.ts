@@ -1,9 +1,10 @@
 #!/usr/bin/env node
 // c8y-ui-workbench: the MCP server (default), or its tools from a shell.
-import { resolve } from 'node:path'
+import { basename, dirname, resolve } from 'node:path'
 import { parseArgs } from 'node:util'
 import { PreviewError, Previews } from './preview'
 import { proveRegression } from './regression'
+import { Screenshots } from './screenshot'
 import { serve, version } from './server'
 import { listApps, WorkbenchError } from './target'
 import type { AuthMode, Target } from './target'
@@ -15,6 +16,8 @@ Usage:
   c8y-ui-workbench [mcp] [options]                  MCP server on stdio
   c8y-ui-workbench apps [options]                   list the apps
   c8y-ui-workbench preview <app> [options]          serve an app until Ctrl+C
+  c8y-ui-workbench screenshot <app> [options] [--path <route>] [--wait-for <css>] [--selector <css>] [--full-page]
+                   [--width <px>] [--height <px>] [--language <code>] [--out <file>]
   c8y-ui-workbench prove-regression <app> [options] [--base <commit>] [--spec <file>]… [--test <name>]…
 
 Options:
@@ -24,6 +27,7 @@ Options:
   --e2e-config <file>   Cypress config file, relative to the e2e root; {app} is replaced by the app name
   --e2e-auth <mode>     emulator login mode in e2e runs: open (default) or login
   --e2e-env <K=V>       more Cypress environment, repeatable; {devUrl} and {mockUrl} are replaced
+  --screenshots <dir>   directory for screenshots (default: c8y-ui-workbench-screenshots in the temp directory)
 `
 
 const { values, positionals } = parseArgs({
@@ -35,6 +39,15 @@ const { values, positionals } = parseArgs({
     'e2e-config': { type: 'string' },
     'e2e-auth': { type: 'string' },
     'e2e-env': { type: 'string', multiple: true },
+    'screenshots': { type: 'string' },
+    'path': { type: 'string' },
+    'wait-for': { type: 'string' },
+    'selector': { type: 'string' },
+    'full-page': { type: 'boolean' },
+    'width': { type: 'string' },
+    'height': { type: 'string' },
+    'language': { type: 'string' },
+    'out': { type: 'string' },
     'base': { type: 'string' },
     'spec': { type: 'string', multiple: true },
     'test': { type: 'string', multiple: true },
@@ -59,6 +72,7 @@ function target(): Target {
     e2eConfig: values['e2e-config'],
     e2eAuth: auth as AuthMode | undefined,
     e2eEnv: env,
+    screenshots: values.screenshots && resolve(values.screenshots),
   }
 }
 
@@ -66,6 +80,15 @@ function requireWorld(t: Target): Target {
   if (!t.world)
     throw new WorkbenchError('--world is required')
   return t
+}
+
+function pixels(option: 'width' | 'height'): number | undefined {
+  const value = values[option]
+  if (value === undefined)
+    return undefined
+  if (!/^\d+$/.test(value))
+    throw new WorkbenchError(`--${option} takes a number of pixels, not ${value}`)
+  return Number(value)
 }
 
 async function main(): Promise<void> {
@@ -92,6 +115,38 @@ async function main(): Promise<void> {
       process.once('SIGINT', stop)
       process.once('SIGTERM', stop)
       await previews.ended(preview.id)
+      return
+    }
+    case 'screenshot': {
+      if (!app)
+        throw new WorkbenchError('screenshot needs an app')
+      const t = requireWorld(target())
+      const out = values.out ? resolve(values.out) : undefined
+      const screenshots = new Screenshots(out ? dirname(out) : t.screenshots)
+      const previews = new Previews(t)
+      const stop = (): void => void Promise.all([previews.closeAll(), screenshots.close()])
+      process.once('SIGINT', stop)
+      process.once('SIGTERM', stop)
+      try {
+        const preview = await previews.up(app)
+        progress(`preview ${preview.url}`)
+        const shot = await screenshots.take({
+          url: preview.url,
+          mockUrl: preview.mockUrl,
+          path: values.path,
+          waitFor: values['wait-for'],
+          selector: values.selector,
+          fullPage: values['full-page'],
+          width: pixels('width'),
+          height: pixels('height'),
+          language: values.language,
+          file: screenshots.file(preview.id, out && basename(out)),
+        })
+        process.stdout.write(`${JSON.stringify(shot, null, 2)}\n`)
+      }
+      finally {
+        await Promise.all([previews.closeAll(), screenshots.close()])
+      }
       return
     }
     case 'prove-regression': {

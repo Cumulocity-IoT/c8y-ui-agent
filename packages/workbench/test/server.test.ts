@@ -25,7 +25,7 @@ describe('MCP server', () => {
 
   it('lists the tools', async () => {
     const { tools } = await client.listTools()
-    expect(tools.map(t => t.name).sort()).toEqual(['list_apps', 'preview_down', 'preview_log', 'preview_up', 'prove_regression'])
+    expect(tools.map(t => t.name).sort()).toEqual(['list_apps', 'preview_down', 'preview_log', 'preview_up', 'prove_regression', 'screenshot'])
     expect(tools.find(t => t.name === 'prove_regression')?.inputSchema.required).toEqual(['app'])
   })
 
@@ -38,6 +38,9 @@ describe('MCP server', () => {
     const log = await client.callTool({ name: 'preview_log', arguments: { id: 'preview-9' } })
     expect(log.isError).toBe(true)
     expect((log.content as Array<{ text: string }>)[0]!.text).toBe('no preview preview-9; running: none')
+    const shot = await client.callTool({ name: 'screenshot', arguments: { id: 'preview-9' } })
+    expect(shot.isError).toBe(true)
+    expect((shot.content as Array<{ text: string }>)[0]!.text).toBe('no preview preview-9; running: none')
     const preview = await client.callTool({ name: 'preview_up', arguments: { app: 'missing' } })
     expect(preview.isError).toBe(true)
     expect((preview.content as Array<{ text: string }>)[0]!.text).toContain('no app missing')

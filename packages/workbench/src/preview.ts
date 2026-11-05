@@ -87,6 +87,10 @@ export class Previews {
     return this.running.get(id)?.session.done.then(() => {}) ?? Promise.resolve()
   }
 
+  get(id: string): Preview | undefined {
+    return this.running.get(id)?.preview
+  }
+
   list(): Preview[] {
     return [...this.running.values()].map(r => r.preview)
   }

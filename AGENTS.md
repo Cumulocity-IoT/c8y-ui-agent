@@ -16,12 +16,13 @@ packages/workbench/   @cumulocity-iot/c8y-ui-workbench: MCP server on the Cumulo
   src/target.ts       the repository and its apps (angular.json, detectConfig of the SDK)
   src/preview.ts      preview_up: startDev of the SDK, one dev server and emulator per preview
   src/tests.ts        one e2e run: runE2e of the SDK, per-test results from reporter/index.cjs
+  src/screenshot.ts   screenshot: a preview's page in headless Chromium (Playwright), with errors and gaps
   src/regression.ts   prove_regression: base worktree, three runs
   src/evaluate.ts     prove_regression's rules (docs/prove-regression.md)
   src/server.ts       the MCP tools; src/cli.ts the bin
 ```
 
-Planned tools: `screenshot`, `check`.
+Planned tool: `check`.
 
 ## Workbench rules
 
