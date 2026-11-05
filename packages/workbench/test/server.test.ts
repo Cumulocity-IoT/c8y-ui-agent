@@ -25,7 +25,7 @@ describe('MCP server', () => {
 
   it('lists the tools', async () => {
     const { tools } = await client.listTools()
-    expect(tools.map(t => t.name).sort()).toEqual(['list_apps', 'preview_down', 'preview_log', 'preview_up', 'prove_regression', 'screenshot'])
+    expect(tools.map(t => t.name).sort()).toEqual(['check', 'list_apps', 'preview_down', 'preview_log', 'preview_up', 'prove_regression', 'screenshot'])
     expect(tools.find(t => t.name === 'prove_regression')?.inputSchema.required).toEqual(['app'])
   })
 
@@ -44,5 +44,8 @@ describe('MCP server', () => {
     const preview = await client.callTool({ name: 'preview_up', arguments: { app: 'missing' } })
     expect(preview.isError).toBe(true)
     expect((preview.content as Array<{ text: string }>)[0]!.text).toContain('no app missing')
+    const check = await client.callTool({ name: 'check', arguments: { app: 'missing', specs: ['../other/x.cy.ts'] } })
+    expect(check.isError).toBe(true)
+    expect((check.content as Array<{ text: string }>)[0]!.text).toBe('spec ../other/x.cy.ts is outside the repository')
   })
 })

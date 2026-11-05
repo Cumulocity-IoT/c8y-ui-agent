@@ -1,4 +1,6 @@
 // The workbench as a library: the same operations as the MCP tools.
+export { check, checkResult } from './check'
+export type { CheckOptions, CheckResult } from './check'
 export { evaluate, gapTouches } from './evaluate'
 export type { EvaluateOptions, Evaluation, TestVerdict, Verdict } from './evaluate'
 export { PreviewError, Previews } from './preview'

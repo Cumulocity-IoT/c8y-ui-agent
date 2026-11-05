@@ -123,7 +123,7 @@ export function isTestFile(path: string, e2eRoot = '.', e2eConfig?: string): boo
 export const isSpec = (path: string): boolean => /\.cy\.[cm]?[jt]sx?$/.test(path)
 
 /** A path given to a tool, relative to the repository, that must stay inside it. */
-function inside(repo: string, path: string, what: string): string {
+export function inside(repo: string, path: string, what: string): string {
   const rel = relative(repo, resolve(repo, path))
   if (rel.startsWith('..') || isAbsolute(rel))
     throw new WorkbenchError(`${what} ${path} is outside the repository`)

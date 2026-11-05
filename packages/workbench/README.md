@@ -1,6 +1,6 @@
 # @cumulocity-iot/c8y-ui-workbench
 
-Model Context Protocol (MCP) server for the C8Y UI Agent. It serves a Cumulocity Web SDK app on the emulated tenant of the Cumulocity UI SDK (`@cumulocity-iot/ui-sdk`), takes screenshots of it, and proves changes with e2e (Cypress) runs. `prove_regression` runs in git worktrees outside the checkout; a preview runs the dev server in the checkout, which writes build output (`dist/`, `.angular/`) as the repository's own serve script does.
+Model Context Protocol (MCP) server for the C8Y UI Agent. It serves a Cumulocity Web SDK app on the emulated tenant of the Cumulocity UI SDK (`@cumulocity-iot/ui-sdk`), takes screenshots of it, runs its e2e (Cypress) tests, and proves changes with them. `prove_regression` runs in git worktrees outside the checkout; a preview and `check` run the dev server in the checkout, which writes build output (`dist/`, `.angular/`) as the repository's own serve script does.
 
 Requires Node 22.13 or later, a repository with its dependencies installed (pnpm or npm), and for screenshots Google Chrome or Playwright's Chromium (`npx playwright-core@<version> install chromium-headless-shell`, with the workbench's `playwright-core` version, which the error without a browser names). Install from GitHub Packages (`@cumulocity-iot:registry=https://npm.pkg.github.com`), with a token that has `read:packages`. The package is private: ask a maintainer of this repository for Read access for your team.
 
@@ -13,7 +13,8 @@ Requires Node 22.13 or later, a repository with its dependencies installed (pnpm
 | `preview_log` | `id`, `lines` | The dev server's last output lines, e.g. build errors after a change |
 | `preview_down` | `id` (optional) | Stops one preview, or all |
 | `screenshot` | `id`, `path`, `waitFor`, `selector`, `fullPage`, `width`, `height`, `language`, `name` (all but `id` optional) | A PNG of a preview's page in headless Chromium (default 1440×900, language `en`), its file, and what went wrong while it loaded: console errors, failed requests, and unexpected emulator gaps. `path` is the route (`#/device/1`); `selector` captures one element. Waits until no request is in flight and the DOM has not changed for 1 s, and finishes animations that end (`settled`), at most 15 s: live widgets that keep changing the page give `settled: false` after 15 s. Failed requests leave out the 404 and 405 responses a fresh tenant gives too and requests the page canceled. Images over 8000 px a side or 3.75 MB (long `fullPage` captures) come back as a file path only. 3 to 5 seconds. |
-| `prove_regression` | `app`, `base`, `specs`, `tests` (all but `app` optional) | One at a time. Verdict `regression`, `observed`, `not-proven` or `inconclusive`, with reasons, per-test outcomes of the base run and two change runs, and the emulator gaps. 3 to 10 minutes. Rules: [docs/prove-regression.md](https://github.com/Cumulocity-IoT/c8y-ui-agent/blob/main/docs/prove-regression.md). |
+| `check` | `app`, `specs` (optional) | One e2e run on the working tree as it is, on a fresh emulated tenant: status `passed`, `failed`, `build-failed` or `error`, test counts, failures with where and why, tests that passed only on a retry, and unexpected emulator gaps. Default: every spec of the app's Cypress config. The quick check between edits; `prove_regression` is the proof. 10 seconds to a few minutes. |
+| `prove_regression` | `app`, `base`, `specs`, `tests` (all but `app` optional) | One at a time, and not while a `check` runs. Verdict `regression`, `observed`, `not-proven` or `inconclusive`, with reasons, per-test outcomes of the base run and two change runs, and the emulator gaps. 3 to 10 minutes. Rules: [docs/prove-regression.md](https://github.com/Cumulocity-IoT/c8y-ui-agent/blob/main/docs/prove-regression.md). |
 
 ## Configuration
 
@@ -53,9 +54,10 @@ The same operations, with the same options:
 c8y-ui-workbench apps
 c8y-ui-workbench preview <app>                        # until Ctrl+C
 c8y-ui-workbench screenshot <app> [--path <route>] [--wait-for <css>] [--selector <css>] [--full-page] [--out <file>]
+c8y-ui-workbench check <app> [--spec <file>]…
 c8y-ui-workbench prove-regression <app> [--base <commit>] [--spec <file>]… [--test <name>]…
 ```
 
-`screenshot` starts a preview, takes one screenshot, stops the preview, and prints the result as JSON. `prove-regression` prints the result as JSON and exits with 0 only for the verdict `regression`.
+`screenshot` starts a preview, takes one screenshot, stops the preview, and prints the result as JSON. `check` and `prove-regression` print the result as JSON and exit with 0 only for the status `passed` or the verdict `regression`.
 
 The workbench runs the repository's code (installs, dev server, Cypress) with its own environment: run it only where that code may run.

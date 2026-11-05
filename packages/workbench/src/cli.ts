@@ -2,6 +2,7 @@
 // c8y-ui-workbench: the MCP server (default), or its tools from a shell.
 import { basename, dirname, resolve } from 'node:path'
 import { parseArgs } from 'node:util'
+import { check } from './check'
 import { PreviewError, Previews } from './preview'
 import { proveRegression } from './regression'
 import { checkLanguage, Screenshots, VIEWPORT } from './screenshot'
@@ -18,11 +19,12 @@ Usage:
   c8y-ui-workbench preview <app> [options]          serve an app until Ctrl+C
   c8y-ui-workbench screenshot <app> [options] [--path <route>] [--wait-for <css>] [--selector <css>] [--full-page]
                    [--width <px>] [--height <px>] [--language <code>] [--out <file>]
+  c8y-ui-workbench check <app> [options] [--spec <file>]…
   c8y-ui-workbench prove-regression <app> [options] [--base <commit>] [--spec <file>]… [--test <name>]…
 
 Options:
   --repo <dir>          the repository (default: the working directory)
-  --world <file>        world file for the emulator, relative to the repository (required for preview and prove-regression)
+  --world <file>        world file for the emulator, relative to the repository (required for all but apps)
   --e2e-root <dir>      Cypress project directory, relative to the repository (default: the repository)
   --e2e-config <file>   Cypress config file, relative to the e2e root; {app} is replaced by the app name
   --e2e-auth <mode>     emulator login mode in e2e runs: open (default) or login
@@ -92,6 +94,22 @@ function pixels(option: 'width' | 'height'): number | undefined {
   return Number(value)
 }
 
+/**
+ * Aborts on SIGINT and SIGTERM, so that dev servers, Cypress, worktrees and temp files are cleaned up. Further signals
+ * must not kill the process before that: the dev server runs in its own process group and would outlive it.
+ */
+function interruptible(progress: (line: string) => void): AbortSignal {
+  const abort = new AbortController()
+  const stop = (): void => {
+    if (!abort.signal.aborted)
+      progress('interrupted: cleaning up …')
+    abort.abort(new Error('interrupted'))
+  }
+  process.on('SIGINT', stop)
+  process.on('SIGTERM', stop)
+  return abort.signal
+}
+
 async function main(): Promise<void> {
   const [command = 'mcp', app] = positionals
   if (values.help) {
@@ -130,18 +148,9 @@ async function main(): Promise<void> {
       const out = values.out ? resolve(values.out) : undefined
       const screenshots = new Screenshots(out ? dirname(out) : t.screenshots)
       const previews = new Previews(t)
-      // Abort on SIGINT and SIGTERM, also while the preview starts. Further signals must not kill the process before
-      // the dev server, which runs in its own process group, is stopped.
-      const abort = new AbortController()
-      const stop = (): void => {
-        if (!abort.signal.aborted)
-          progress('interrupted: cleaning up …')
-        abort.abort(new Error('interrupted'))
-      }
-      process.on('SIGINT', stop)
-      process.on('SIGTERM', stop)
+      const signal = interruptible(progress)
       try {
-        const preview = await previews.up(app, abort.signal)
+        const preview = await previews.up(app, signal)
         progress(`preview ${preview.url}`)
         const shot = await screenshots.take({
           url: preview.url,
@@ -154,7 +163,7 @@ async function main(): Promise<void> {
           height,
           language: values.language,
           file: screenshots.file(preview.id, out && basename(out)),
-          signal: abort.signal,
+          signal,
         })
         process.stdout.write(`${JSON.stringify(shot, null, 2)}\n`)
       }
@@ -163,20 +172,21 @@ async function main(): Promise<void> {
       }
       return
     }
+    case 'check': {
+      if (!app)
+        throw new WorkbenchError('check needs an app')
+      const t = requireWorld(target())
+      const signal = interruptible(progress)
+      const result = await check({ target: t, app, specs: values.spec, signal })
+      process.stdout.write(`${JSON.stringify(result, null, 2)}\n`)
+      process.exitCode = result.status === 'passed' ? 0 : 1
+      return
+    }
     case 'prove-regression': {
       if (!app)
         throw new WorkbenchError('prove-regression needs an app')
-      // Abort on SIGINT and SIGTERM, so that the dev servers, worktrees and temp files are removed. Further signals
-      // must not kill the process before that.
-      const abort = new AbortController()
-      const stop = (): void => {
-        if (!abort.signal.aborted)
-          progress('interrupted: cleaning up …')
-        abort.abort(new Error('interrupted'))
-      }
-      process.on('SIGINT', stop)
-      process.on('SIGTERM', stop)
-      const result = await proveRegression({ target: requireWorld(target()), app, base: values.base, specs: values.spec, tests: values.test, log: progress, signal: abort.signal })
+      const signal = interruptible(progress)
+      const result = await proveRegression({ target: requireWorld(target()), app, base: values.base, specs: values.spec, tests: values.test, log: progress, signal })
       process.stdout.write(`${JSON.stringify(result, null, 2)}\n`)
       process.exitCode = result.verdict === 'regression' ? 0 : 1
       return
