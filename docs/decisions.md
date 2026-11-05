@@ -83,3 +83,15 @@ Rejected:
 - A git worktree with a fresh install, as in `prove_regression`: the install takes minutes, and ignored files such as `cypress.env.json` would be missing. The checkout as it is answers the developer's question: do the tests pass on my working tree.
 
 Decided on 2026-11-05.
+
+## D13: Phase 1 ends without switching the toolkit's issue loop
+
+Phase 1 ends with the four workbench tools (`preview_up`, `screenshot`, `check`, `prove_regression`) working on the `cumulocity-ui-toolkit` pilot from the command line. The toolkit's own issue loop does not switch to them: the agent's `triage` and `fix` playbooks and the reusable workflow (phase 3) replace that loop, so switching it now builds what phase 3 removes. Phase 2 does not depend on it.
+
+What the switch would have tested, an agent that works a whole issue with the tools, gets a cheaper check before the phase 3 playbooks are written: one Claude Code session in the pilot worktree, with the workbench as its MCP server, works one issue. Unclear tool descriptions, oversized results and misread statuses become workbench changes.
+
+`prove_regression` returns `regression` on the toolkit only after the toolkit upgrades to SDK 2.3 (`docs/prove-regression.md`); until then it returns `observed` whenever the emulator misses a request. That upgrade is a toolkit change.
+
+Rejected: switching the toolkit's issue loop to the workbench tools, as planned. The loop is replaced in phase 3.
+
+Decided on 2026-11-05.
