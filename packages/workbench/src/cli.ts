@@ -4,7 +4,7 @@ import { basename, dirname, resolve } from 'node:path'
 import { parseArgs } from 'node:util'
 import { PreviewError, Previews } from './preview'
 import { proveRegression } from './regression'
-import { Screenshots } from './screenshot'
+import { checkLanguage, Screenshots, VIEWPORT } from './screenshot'
 import { serve, version } from './server'
 import { listApps, WorkbenchError } from './target'
 import type { AuthMode, Target } from './target'
@@ -27,7 +27,7 @@ Options:
   --e2e-config <file>   Cypress config file, relative to the e2e root; {app} is replaced by the app name
   --e2e-auth <mode>     emulator login mode in e2e runs: open (default) or login
   --e2e-env <K=V>       more Cypress environment, repeatable; {devUrl} and {mockUrl} are replaced
-  --screenshots <dir>   directory for screenshots (default: c8y-ui-workbench-screenshots in the temp directory)
+  --screenshots <dir>   directory for screenshots (default: a new private directory in the temp directory)
 `
 
 const { values, positionals } = parseArgs({
@@ -86,8 +86,9 @@ function pixels(option: 'width' | 'height'): number | undefined {
   const value = values[option]
   if (value === undefined)
     return undefined
-  if (!/^\d+$/.test(value))
-    throw new WorkbenchError(`--${option} takes a number of pixels, not ${value}`)
+  const { min, max } = VIEWPORT[option]
+  if (!/^\d+$/.test(value) || Number(value) < min || Number(value) > max)
+    throw new WorkbenchError(`--${option} takes ${min} to ${max} pixels, not ${value}`)
   return Number(value)
 }
 
@@ -121,14 +122,26 @@ async function main(): Promise<void> {
       if (!app)
         throw new WorkbenchError('screenshot needs an app')
       const t = requireWorld(target())
+      // Check the options before the preview starts, which takes minutes.
+      const width = pixels('width')
+      const height = pixels('height')
+      if (values.language !== undefined)
+        checkLanguage(values.language)
       const out = values.out ? resolve(values.out) : undefined
       const screenshots = new Screenshots(out ? dirname(out) : t.screenshots)
       const previews = new Previews(t)
-      const stop = (): void => void Promise.all([previews.closeAll(), screenshots.close()])
-      process.once('SIGINT', stop)
-      process.once('SIGTERM', stop)
+      // Abort on SIGINT and SIGTERM, also while the preview starts. Further signals must not kill the process before
+      // the dev server, which runs in its own process group, is stopped.
+      const abort = new AbortController()
+      const stop = (): void => {
+        if (!abort.signal.aborted)
+          progress('interrupted: cleaning up …')
+        abort.abort(new Error('interrupted'))
+      }
+      process.on('SIGINT', stop)
+      process.on('SIGTERM', stop)
       try {
-        const preview = await previews.up(app)
+        const preview = await previews.up(app, abort.signal)
         progress(`preview ${preview.url}`)
         const shot = await screenshots.take({
           url: preview.url,
@@ -137,10 +150,11 @@ async function main(): Promise<void> {
           waitFor: values['wait-for'],
           selector: values.selector,
           fullPage: values['full-page'],
-          width: pixels('width'),
-          height: pixels('height'),
+          width,
+          height,
           language: values.language,
           file: screenshots.file(preview.id, out && basename(out)),
+          signal: abort.signal,
         })
         process.stdout.write(`${JSON.stringify(shot, null, 2)}\n`)
       }

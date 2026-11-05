@@ -61,7 +61,7 @@ Decided on 2026-11-04.
 
 The workbench takes screenshots with `playwright-core` in headless Chromium: Playwright's own Chromium when installed, otherwise the installed Google Chrome (`channel: 'chrome'`), which GitHub's Ubuntu runners have. `playwright-core` downloads no browser on install. One browser serves all screenshots; each screenshot gets a fresh browser context.
 
-A screenshot waits until no HTTP request is in flight and the DOM has not changed for 1 s, at most 15 s. The shell slides its navigator in about 0.7 s after its last request, so waiting for the network alone captures it half open. The emulator's gap report (`/_mock/gaps?since=`) adds the requests the emulator could not answer while the page loaded.
+A screenshot waits until no HTTP request is in flight and the DOM has not changed for 1 s, at most 15 s. The shell slides its navigator in about 0.7 s after its last request, so waiting for the network alone captures it half open. Running animations that end are then finished on the page, and the page must be quiet again: Playwright's `animations: 'disabled'` finishes them at the capture too, but their end handlers run after it has measured the page. The emulator's gap report (`/_mock/gaps?since=`) adds the requests the emulator could not answer while the page loaded.
 
 Rejected:
 
