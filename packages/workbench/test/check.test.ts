@@ -43,11 +43,38 @@ describe('checkResult', () => {
     expect(result.error).toBeUndefined()
   })
 
-  it('fails when a spec does not load: Cypress counts more failures than failed tests', () => {
+  it('fails when Cypress counts failures without a failed test: a spec did not load or ended early', () => {
     const result = checkResult('kpi', [], run([test('shows', 'passed')], { exitCode: 1 }))
     expect(result.status).toBe('failed')
     expect(result.failures).toEqual([])
-    expect(result.error).toContain('1 more failure(s) than failed tests')
+    expect(result.error).toContain('1 failure(s) without a failed test')
+  })
+
+  it('fails when a named spec reports no tests', () => {
+    const other = 'cypress/e2e/other.cy.ts'
+    const result = checkResult('kpi', [SPEC, other], run([test('shows', 'passed')]))
+    expect(result.status).toBe('failed')
+    expect(result.error).toBe(`${other}: no test results (the spec did not load, does not match the Cypress config's specPattern, or has no tests)`)
+  })
+
+  it('matches named specs relative to the e2e root', () => {
+    expect(checkResult('kpi', [`test/${SPEC}`], run([test('shows', 'passed')]), 'test').status).toBe('passed')
+    expect(checkResult('kpi', [SPEC], run([test('shows', 'passed')]), 'test').status).toBe('failed')
+  })
+
+  it('is an error when every test is pending', () => {
+    const result = checkResult('kpi', [SPEC], run([test('later', 'pending'), test('much later', 'pending')]))
+    expect(result).toMatchObject({ status: 'error', error: 'no test ran: all 2 tests are pending' })
+  })
+
+  it('fails on skipped tests even when the exit code is 0', () => {
+    expect(checkResult('kpi', [], run([test('shows', 'passed'), test('skipped', 'skipped')], { exitCode: 0 })).status).toBe('failed')
+  })
+
+  it('lists a test that failed after retries as a failure, not as retried', () => {
+    const flaky = test('flaky', 'failed', { failedIn: 'test', attempts: 3 })
+    const result = checkResult('kpi', [], run([test('shows', 'passed'), flaky]))
+    expect(result).toMatchObject({ status: 'failed', failures: [flaky], retried: [] })
   })
 
   it('passes build failures and errors through', () => {
@@ -72,10 +99,12 @@ describe('check', () => {
   })
   afterAll(() => rmSync(repo, { recursive: true, force: true }))
 
-  it('rejects specs outside the repository or missing, before anything starts', async () => {
+  it('rejects specs outside the repository, missing, or not files, before anything starts', async () => {
     const target = { repo, world: 'world.json' }
     await expect(check({ target, app: 'kpi', specs: ['../x.cy.ts'] })).rejects.toThrow('spec ../x.cy.ts is outside the repository')
-    await expect(check({ target, app: 'kpi', specs: [SPEC, 'cypress/e2e/missing.cy.ts'] })).rejects.toThrow('spec cypress/e2e/missing.cy.ts does not exist')
+    await expect(check({ target, app: 'kpi', specs: [SPEC, 'cypress/e2e/missing.cy.ts'] })).rejects.toThrow('spec cypress/e2e/missing.cy.ts is not a file')
+    await expect(check({ target, app: 'kpi', specs: ['.'] })).rejects.toThrow('spec . is not a file')
+    await expect(check({ target, app: 'kpi', specs: ['cypress'] })).rejects.toThrow('spec cypress is not a file')
     await expect(check({ target, app: 'kpi', specs: [SPEC] })).rejects.toThrow('no app kpi')
   })
 })

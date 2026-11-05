@@ -11,6 +11,7 @@ import { check } from './check'
 import { PreviewError, Previews } from './preview'
 import { discardActiveProofs, proveRegression } from './regression'
 import { Screenshots, tooLargeToInline, VIEWPORT } from './screenshot'
+import { Slot } from './slot'
 import { listApps } from './target'
 import type { Target } from './target'
 import { errorMessage } from './util'
@@ -39,29 +40,20 @@ export function createServer(target: Target): Workbench {
   const server = new McpServer({ name: 'c8y-ui-workbench', version })
   const previews = new Previews(target)
   const screenshots = new Screenshots(target.screenshots)
-  // One e2e run at a time, check or proof: two proofs would share the checkout's .git/worktrees, and parallel Cypress
-  // runs compete for CPU, which makes tests flaky.
-  let running: { tool: string, abort: AbortController, done: Promise<unknown> } | undefined
+  const slot = new Slot()
+  // A check or proof in the slot, with progress notifications when the client asked for them.
   const exclusive = async (tool: string, extra: Extra, work: (signal: AbortSignal, log: (message: string) => void) => Promise<unknown>): Promise<CallToolResult> => {
-    if (running)
-      return failure(`${running.tool} is already running; wait for its result`)
     const token = extra._meta?.progressToken
     let step = 0
     const log = (message: string): void => {
       if (token !== undefined)
         extra.sendNotification({ method: 'notifications/progress', params: { progressToken: token, progress: ++step, message } }).catch(() => {})
     }
-    const abort = new AbortController()
-    const run = work(AbortSignal.any([extra.signal, abort.signal]), log)
-    running = { tool, abort, done: run.catch(() => {}) }
     try {
-      return json(await run)
+      return json(await slot.run(tool, extra.signal, signal => work(signal, log)))
     }
     catch (error) {
       return failure(error)
-    }
-    finally {
-      running = undefined
     }
   }
 
@@ -153,15 +145,16 @@ export function createServer(target: Target): Workbench {
   server.registerTool('check', {
     title: 'Run e2e tests',
     description: 'Run the app\'s e2e (Cypress) tests once on the working tree, on a fresh emulated tenant, and return each test\'s outcome and the '
-      + 'emulator gaps: the quick check between edits. Status "passed": every test passed; "failed": a test failed, was skipped after a failed hook, '
-      + 'or a spec did not load (see failures, error and log); "build-failed": the app did not build; "error": Cypress did not run or reported no tests. '
+      + 'emulator gaps: the quick check between edits. Status "passed": every test passed or is pending, and at least one passed; "failed": a test '
+      + 'failed or was skipped after a failed hook, a named spec reported no tests, or Cypress counted failures without a test (see failures, error '
+      + 'and log); "build-failed": the app did not build; "error": Cypress did not run, reported no tests at all, or every test is pending. '
       + '"retried" lists flaky tests that passed only on a retry. Runs in the checkout as it is, with its installed dependencies and ignored files; '
       + 'prove_regression is the proof. One check or proof at a time; takes 10 seconds to a few minutes.',
     inputSchema: {
       app: z.string().describe('App name from list_apps'),
       specs: z.array(z.string().min(1)).optional().describe('Spec files relative to the repository (default: every spec of the app\'s Cypress config)'),
     },
-  }, async ({ app, specs }, extra) => exclusive('check', extra, signal => check({ target, app, specs, signal })))
+  }, async ({ app, specs }, extra) => exclusive('check', extra, (signal, log) => check({ target, app, specs, signal, log })))
 
   server.registerTool('prove_regression', {
     title: 'Prove a regression',
@@ -181,13 +174,7 @@ export function createServer(target: Target): Workbench {
 
   // A client that disconnects kills the server seconds later (the MCP SDK: SIGTERM after 2 s, SIGKILL after 4 s).
   // Abort, which tells the dev servers and Cypress to stop, discard a proof's worktrees at once, then wait briefly.
-  const stopRuns = async (): Promise<void> => {
-    if (!running)
-      return
-    running.abort.abort(new Error('the workbench stops'))
-    await discardActiveProofs()
-    await Promise.race([running.done, new Promise(r => setTimeout(r, 1500))])
-  }
+  const stopRuns = (): Promise<void> => slot.stop(new Error('the workbench stops'), discardActiveProofs)
   return { server, previews, screenshots, stopRuns }
 }
 

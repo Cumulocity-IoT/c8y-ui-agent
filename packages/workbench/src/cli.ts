@@ -177,7 +177,7 @@ async function main(): Promise<void> {
         throw new WorkbenchError('check needs an app')
       const t = requireWorld(target())
       const signal = interruptible(progress)
-      const result = await check({ target: t, app, specs: values.spec, signal })
+      const result = await check({ target: t, app, specs: values.spec, signal, log: progress })
       process.stdout.write(`${JSON.stringify(result, null, 2)}\n`)
       process.exitCode = result.status === 'passed' ? 0 : 1
       return
