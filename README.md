@@ -6,7 +6,7 @@ The App installs only in the `Cumulocity-IoT` organization. Its packages are not
 
 ## Status
 
-Phase 1 of 6: the workbench. `preview_up`, `screenshot` and `prove_regression` work on the `cumulocity-ui-toolkit` pilot; `check` follows. Nothing here is ready for production use yet.
+Phase 1 of 6: the workbench. `preview_up`, `screenshot`, `check` and `prove_regression` work on the `cumulocity-ui-toolkit` pilot; switching the toolkit's issue loop to them follows. Nothing here is ready for production use yet.
 
 | Phase | Content |
 |---|---|

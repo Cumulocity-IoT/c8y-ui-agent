@@ -70,3 +70,16 @@ Rejected:
 - A screenshot API in the UI SDK: the SDK has no browser dependency. The workbench can move to one if the SDK adds it.
 
 Decided on 2026-11-05.
+
+## D12: `check` is one e2e run on the working tree
+
+`check` runs the app's e2e (Cypress) tests once, in the repository's checkout as it is, on a fresh emulated tenant (SDK `runE2e`, `ng serve`), and returns a status (`passed`, `failed`, `build-failed`, `error`) with the failures, retried tests, and unexpected gaps. Without `specs`, it runs every spec of the app's Cypress config. It is the developer's check between edits: 10 to 30 seconds on the pilot. `prove_regression` remains the proof.
+
+`check` and `prove_regression` share one slot: one e2e run at a time per workbench, because parallel Cypress runs compete for CPU and make tests flaky.
+
+Rejected:
+
+- Lint, type check, and unit tests in `check`: they are the repository's own scripts, which the agent runs with its shell, and finding them is discovery (phase 3). `check` covers what needs the emulator.
+- A git worktree with a fresh install, as in `prove_regression`: the install takes minutes, and ignored files such as `cypress.env.json` would be missing. The checkout as it is answers the developer's question: do the tests pass on my working tree.
+
+Decided on 2026-11-05.

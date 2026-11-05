@@ -4,17 +4,22 @@ import { readFile } from 'node:fs/promises'
 import { createRequire } from 'node:module'
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js'
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js'
-import type { CallToolResult } from '@modelcontextprotocol/sdk/types.js'
+import type { RequestHandlerExtra } from '@modelcontextprotocol/sdk/shared/protocol.js'
+import type { CallToolResult, ServerNotification, ServerRequest } from '@modelcontextprotocol/sdk/types.js'
 import { z } from 'zod'
+import { check } from './check'
 import { PreviewError, Previews } from './preview'
 import { discardActiveProofs, proveRegression } from './regression'
 import { Screenshots, tooLargeToInline, VIEWPORT } from './screenshot'
+import { Slot } from './slot'
 import { listApps } from './target'
 import type { Target } from './target'
 import { errorMessage } from './util'
 
 // Read at runtime: semantic-release sets the version after the build.
 export const version: string = (createRequire(import.meta.url)('../package.json') as { version: string }).version
+
+type Extra = RequestHandlerExtra<ServerRequest, ServerNotification>
 
 const json = (value: unknown): CallToolResult => ({ content: [{ type: 'text', text: JSON.stringify(value, null, 2) }] })
 
@@ -27,20 +32,34 @@ export interface Workbench {
   server: McpServer
   previews: Previews
   screenshots: Screenshots
-  /** Abort a running proof and wait for its cleanup (worktrees, dev servers). */
-  stopProof: () => Promise<void>
+  /** Abort a running check or proof and wait for its cleanup (worktrees, dev servers, Cypress). */
+  stopRuns: () => Promise<void>
 }
 
 export function createServer(target: Target): Workbench {
   const server = new McpServer({ name: 'c8y-ui-workbench', version })
   const previews = new Previews(target)
   const screenshots = new Screenshots(target.screenshots)
-  // One proof at a time: two would share the checkout's .git/worktrees and compete for CPU, which makes tests flaky.
-  let proof: { abort: AbortController, done: Promise<unknown> } | undefined
+  const slot = new Slot()
+  // A check or proof in the slot, with progress notifications when the client asked for them.
+  const exclusive = async (tool: string, extra: Extra, work: (signal: AbortSignal, log: (message: string) => void) => Promise<unknown>): Promise<CallToolResult> => {
+    const token = extra._meta?.progressToken
+    let step = 0
+    const log = (message: string): void => {
+      if (token !== undefined)
+        extra.sendNotification({ method: 'notifications/progress', params: { progressToken: token, progress: ++step, message } }).catch(() => {})
+    }
+    try {
+      return json(await slot.run(tool, extra.signal, signal => work(signal, log)))
+    }
+    catch (error) {
+      return failure(error)
+    }
+  }
 
   server.registerTool('list_apps', {
     title: 'List apps',
-    description: 'The apps of the repository that preview_up and prove_regression take: Angular projects with a serve target, by folder name.',
+    description: 'The apps of the repository that preview_up, check and prove_regression take: Angular projects with a serve target, by folder name.',
     annotations: { readOnlyHint: true },
   }, async () => json(listApps(target.repo)))
 
@@ -123,6 +142,20 @@ export function createServer(target: Target): Workbench {
     }
   })
 
+  server.registerTool('check', {
+    title: 'Run e2e tests',
+    description: 'Run the app\'s e2e (Cypress) tests once on the working tree, on a fresh emulated tenant, and return each test\'s outcome and the '
+      + 'emulator gaps: the quick check between edits. Status "passed": every test passed or is pending, and at least one passed; "failed": a test '
+      + 'failed or was skipped after a failed hook, a named spec reported no tests, or Cypress counted failures without a test (see failures, error '
+      + 'and log); "build-failed": the app did not build; "error": Cypress did not run, reported no tests at all, or every test is pending. '
+      + '"retried" lists flaky tests that passed only on a retry. Runs in the checkout as it is, with its installed dependencies and ignored files; '
+      + 'prove_regression is the proof. One check or proof at a time; takes 10 seconds to a few minutes.',
+    inputSchema: {
+      app: z.string().describe('App name from list_apps'),
+      specs: z.array(z.string().min(1)).optional().describe('Spec files relative to the repository (default: every spec of the app\'s Cypress config)'),
+    },
+  }, async ({ app, specs }, extra) => exclusive('check', extra, (signal, log) => check({ target, app, specs, signal, log })))
+
   server.registerTool('prove_regression', {
     title: 'Prove a regression',
     description: 'Prove that e2e (Cypress) tests show the change: run them on the base commit without the product change, then twice on the working tree, '
@@ -130,56 +163,29 @@ export function createServer(target: Target): Workbench {
       + 'but an emulator gap may explain it. "not-proven": they pass on the base, fail only in a hook, or fail or are flaky on the change. '
       + '"inconclusive": a build or run failed. Test files are the files under the e2e root; everything else counts as the product change. '
       + 'Both sides run in git worktrees with a fresh install; files git ignores reach neither. Commit or keep the change in the working tree; '
-      + 'it is not modified. One proof at a time; takes 2 to 10 minutes.',
+      + 'it is not modified. One proof or check at a time; takes 2 to 10 minutes.',
     inputSchema: {
       app: z.string().describe('App name from list_apps'),
       base: z.string().optional().describe('Commit without the change (default: merge base with the remote default branch)'),
       specs: z.array(z.string()).optional().describe('Spec files relative to the repository (default: the changed spec files)'),
       tests: z.array(z.string()).optional().describe('Tests that must prove the change, as "<spec> › <suite> › <test>" with the spec relative to the e2e root (default: any test of the specs)'),
     },
-  }, async ({ app, base, specs, tests }, extra) => {
-    if (proof)
-      return failure('a proof is already running; wait for its result')
-    const token = extra._meta?.progressToken
-    let step = 0
-    const log = (message: string): void => {
-      if (token !== undefined)
-        extra.sendNotification({ method: 'notifications/progress', params: { progressToken: token, progress: ++step, message } }).catch(() => {})
-    }
-    const abort = new AbortController()
-    const run = proveRegression({ target, app, base, specs, tests, signal: AbortSignal.any([extra.signal, abort.signal]), log })
-    proof = { abort, done: run.catch(() => {}) }
-    try {
-      return json(await run)
-    }
-    catch (error) {
-      return failure(error)
-    }
-    finally {
-      proof = undefined
-    }
-  })
+  }, async ({ app, base, specs, tests }, extra) => exclusive('prove_regression', extra, (signal, log) => proveRegression({ target, app, base, specs, tests, signal, log })))
 
   // A client that disconnects kills the server seconds later (the MCP SDK: SIGTERM after 2 s, SIGKILL after 4 s).
-  // Abort, which tells the dev servers and Cypress to stop, discard the worktrees at once, then wait briefly.
-  const stopProof = async (): Promise<void> => {
-    if (!proof)
-      return
-    proof.abort.abort(new Error('the workbench stops'))
-    await discardActiveProofs()
-    await Promise.race([proof.done, new Promise(r => setTimeout(r, 1500))])
-  }
-  return { server, previews, screenshots, stopProof }
+  // Abort, which tells the dev servers and Cypress to stop, discard a proof's worktrees at once, then wait briefly.
+  const stopRuns = (): Promise<void> => slot.stop(new Error('the workbench stops'), discardActiveProofs)
+  return { server, previews, screenshots, stopRuns }
 }
 
 export async function serve(target: Target): Promise<void> {
-  const { server, previews, screenshots, stopProof } = createServer(target)
+  const { server, previews, screenshots, stopRuns } = createServer(target)
   let closing = false
   const shutdown = async (): Promise<void> => {
     if (closing)
       return
     closing = true
-    await Promise.all([stopProof(), previews.closeAll(), screenshots.close()])
+    await Promise.all([stopRuns(), previews.closeAll(), screenshots.close()])
     await server.close()
     process.exit(0)
   }
