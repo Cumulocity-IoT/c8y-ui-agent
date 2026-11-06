@@ -18,8 +18,8 @@ One proof runs at a time per workbench. Cancelling it (MCP cancellation, SIGINT,
 
 | Verdict | Meaning |
 |---|---|
-| `regression` | The tests fail on the base in their own body, pass in both change runs on the first attempt, and no unexpected emulator gap concerns a tested spec. |
-| `observed` | The same outcomes, but an unexpected emulator gap concerns a tested spec, so the gap may explain them. The change is observed, not proven. |
+| `regression` | The tests fail on the base in their own body, pass in both change runs on the first attempt, and the emulator answered every request of the runs (no unexpected gap). |
+| `observed` | The same outcomes, but the emulator could not answer a request in one of the runs (an unexpected gap), so the gap may explain them. The change is observed, not proven. |
 | `not-proven` | The tests do not show the change: see `reasons`. |
 | `inconclusive` | A run did not complete: a side does not build, installation failed, or Cypress reported no tests. |
 
@@ -30,7 +30,7 @@ Rules, each with a reason in the result:
 - **Every test of the specs must pass in every change run.** A test that fails in one change run and passes in the other, or passes only on a retry, is flaky.
 - **Every spec must report tests in every change run**, and Cypress' exit code (its count of failures) must not exceed the failed tests: a spec that does not load reports no tests but counts as a failure.
 - With `tests`, **every named test** must prove the change; without, at least one test of the specs must.
-- A **gap concerns a tested spec** when the gap report attributes it to any test or hook of the spec (`<spec> › …`), or to no test at all. A proof runs only the tested specs, so every gap of its runs concerns them, and an unexpected gap gives `observed` with or without attribution. The attribution (`gaps[].tests`) needs the Cypress support hooks of `@cumulocity-iot/ui-sdk/cypress` from SDK 2.3, with `Cypress.env('C8Y_MOCK_URL')` set; it shows which tests sent each gap.
+- **Every unexpected gap** of the base run or a change run gives `observed`. A proof runs only the tested specs, so their tests, hooks and app start sent every request of the runs. The gap report lists the tests that sent each gap (`gaps[].tests`) when the Cypress support file imports `@cumulocity-iot/ui-sdk/cypress` from SDK 2.3 and `Cypress.env('C8Y_MOCK_URL')` is set; the list helps find the cause and does not change the verdict.
 - **Expected gaps** (`expected: true`: requests a fresh tenant answers with 404 too) are ignored.
 
 ## Test names

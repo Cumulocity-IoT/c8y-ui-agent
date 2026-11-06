@@ -1,6 +1,6 @@
 import type { GapRecord } from '@cumulocity-iot/ui-sdk'
 import { describe, expect, it } from 'vitest'
-import { evaluate, gapTouches } from '../src/evaluate'
+import { evaluate } from '../src/evaluate'
 import { testId } from '../src/tests'
 import type { TestResult, TestRun } from '../src/tests'
 
@@ -88,23 +88,29 @@ describe('evaluate', () => {
     expect(result.gaps).toHaveLength(1)
   })
 
-  it('treats gaps without test attribution as touching every test', () => {
+  it('limits the evidence to observed with gaps the report attributes to no test', () => {
     const base = run('base', [failed('shows the fix')], { gaps: [gap()] })
     const result = evaluate(base, [run('change 1', [test('shows the fix')]), run('change 2', [test('shows the fix')])], O)
     expect(result.verdict).toBe('observed')
-    expect(result.reasons[0]).toContain('does not attribute them to tests')
+    expect(result.reasons).toEqual(['the emulator could not answer requests of the tested specs (see gaps): a gap may explain the outcome'])
   })
 
   it('limits the evidence to observed when a gap concerns another test of a tested spec', () => {
     const base = run('base', [failed('shows the fix'), test('still works')], { gaps: [gap({ tests: [OTHER] })] })
     const result = evaluate(base, [run('change 1', passing), run('change 2', passing)], O)
     expect(result.verdict).toBe('observed')
-    expect(result.reasons[0]).toContain('requests of the tested specs')
   })
 
-  it('ignores expected gaps and gaps of other specs', () => {
-    const elsewhere = gap({ tests: [testId('cypress/e2e/b.cy.ts', ['B', 'other'])] })
-    const base = run('base', [failed('shows the fix'), test('still works')], { gaps: [gap({ expected: true }), elsewhere] })
+  it('counts a gap whose test names no tested spec: the names may differ from the reporter\'s', () => {
+    const elsewhere = gap({ tests: [testId('test/cypress/e2e/a.cy.ts', ['A', 'shows the fix'])] })
+    const change = run('change 2', passing, { gaps: [elsewhere] })
+    const result = evaluate(run('base', [failed('shows the fix'), test('still works')]), [run('change 1', passing), change], O)
+    expect(result.verdict).toBe('observed')
+    expect(result.gaps).toEqual([elsewhere])
+  })
+
+  it('ignores expected gaps', () => {
+    const base = run('base', [failed('shows the fix'), test('still works')], { gaps: [gap({ expected: true })] })
     const result = evaluate(base, [run('change 1', passing), run('change 2', passing)], O)
     expect(result.verdict).toBe('regression')
     expect(result.gaps).toEqual([])
@@ -125,16 +131,5 @@ describe('evaluate', () => {
   it('reports a named test that did not run once', () => {
     const result = evaluate(run('base', [failed('shows the fix')]), [run('change 1', [test('shows the fix')])], { ...O, tests: [ID, 'A › typo'] })
     expect(result.reasons.filter(r => r.startsWith('A › typo'))).toHaveLength(1)
-  })
-})
-
-describe('gapTouches', () => {
-  it('matches every test and hook of the spec, and unattributed gaps', () => {
-    expect(gapTouches(gap({ tests: [ID] }), SPEC)).toBe(true)
-    expect(gapTouches(gap({ tests: [`${ID} › after`] }), SPEC)).toBe(true)
-    expect(gapTouches(gap({ tests: [`${SPEC} › before all`] }), SPEC)).toBe(true)
-    expect(gapTouches(gap(), SPEC)).toBe(true)
-    expect(gapTouches(gap({ tests: [testId('cypress/e2e/b.cy.ts', ['before all'])] }), SPEC)).toBe(false)
-    expect(gapTouches(gap({ tests: [testId(`${SPEC}x`, ['T'])] }), SPEC)).toBe(false)
   })
 })
