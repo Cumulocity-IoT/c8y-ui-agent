@@ -30,7 +30,7 @@ Rules, each with a reason in the result:
 - **Every test of the specs must pass in every change run.** A test that fails in one change run and passes in the other, or passes only on a retry, is flaky.
 - **Every spec must report tests in every change run**, and Cypress' exit code (its count of failures) must not exceed the failed tests: a spec that does not load reports no tests but counts as a failure.
 - With `tests`, **every named test** must prove the change; without, at least one test of the specs must.
-- A **gap concerns a tested spec** when the gap report attributes it to any test or hook of the spec (`<spec> › …`), or to no test at all. The attribution needs the Cypress support hooks of `@cumulocity-iot/ui-sdk/cypress` from SDK 2.3; repositories on older versions get `observed` whenever the emulator misses a request.
+- A **gap concerns a tested spec** when the gap report attributes it to any test or hook of the spec (`<spec> › …`), or to no test at all. A proof runs only the tested specs, so every gap of its runs concerns them, and an unexpected gap gives `observed` with or without attribution. The attribution (`gaps[].tests`) needs the Cypress support hooks of `@cumulocity-iot/ui-sdk/cypress` from SDK 2.3, with `Cypress.env('C8Y_MOCK_URL')` set; it shows which tests sent each gap.
 - **Expected gaps** (`expected: true`: requests a fresh tenant answers with 404 too) are ignored.
 
 ## Test names

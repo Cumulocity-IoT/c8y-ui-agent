@@ -90,7 +90,7 @@ Phase 1 ends with the four workbench tools (`preview_up`, `screenshot`, `check`,
 
 What the switch would have tested, an agent that works a whole issue with the tools, gets a cheaper check before the phase 3 playbooks are written: one Claude Code session in the pilot worktree, with the workbench as its MCP server, works one issue. Unclear tool descriptions, oversized results and misread statuses become workbench changes.
 
-`prove_regression` returns `regression` on the toolkit only after the toolkit upgrades to SDK 2.3 (`docs/prove-regression.md`); until then it returns `observed` whenever the emulator misses a request. That upgrade is a toolkit change.
+The toolkit runs SDK 2.3.3 since its pull request #117, so its gap reports name the tests behind each gap. On 2026-11-06, the pilot proof, rebased onto that version, returned `regression`.
 
 Rejected: switching the toolkit's issue loop to the workbench tools, as planned. The loop is replaced in phase 3.
 
