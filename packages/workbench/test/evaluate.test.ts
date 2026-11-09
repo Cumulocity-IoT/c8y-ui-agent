@@ -40,6 +40,14 @@ describe('evaluate', () => {
     expect(result.reasons).toEqual(['no test fails on the base commit in its own body and passes on the change'])
   })
 
+  it('returns the unexpected gaps of every run with not-proven, one per run and gap', () => {
+    const same = gap({ tests: [ID] })
+    const other = gap({ path: '/y' })
+    const result = evaluate(run('base', passing, { gaps: [same] }), [run('change 1', passing, { gaps: [same, other, gap({ expected: true })] })], O)
+    expect(result.verdict).toBe('not-proven')
+    expect(result.gaps).toEqual([same, same, other])
+  })
+
   it('requires every test to pass on the change', () => {
     const result = evaluate(run('base', [failed('shows the fix'), test('still works')]), [run('change 1', [test('shows the fix'), failed('still works')]), run('change 2', [test('shows the fix'), failed('still works')])], O)
     expect(result.verdict).toBe('not-proven')
