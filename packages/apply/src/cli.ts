@@ -49,7 +49,8 @@ const { values, positionals } = parseArgs({
 })
 
 const out = (value: unknown): void => void process.stdout.write(`${JSON.stringify(value, null, 2)}\n`)
-const log = (line: string): void => void process.stderr.write(`${line}\n`)
+// One line per message: a newline in the agent's text must not start a line the runner reads as a workflow command.
+const log = (line: string): void => void process.stderr.write(`${line.replace(/[\r\n]+/g, ' ')}\n`)
 
 function required(name: keyof typeof values): string {
   const value = values[name]

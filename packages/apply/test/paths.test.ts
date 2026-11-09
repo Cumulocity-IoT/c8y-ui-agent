@@ -19,11 +19,26 @@ describe('checkPaths', () => {
     ])
   })
 
-  it('protects package sources and install hooks at the root', () => {
-    expect(rules(['.npmrc', '.gitmodules', '.pnpmfile.cjs', 'packages/x/.npmrc'])).toEqual([
+  it('protects package sources and install hooks', () => {
+    expect(rules(['.npmrc', '.gitmodules', '.pnpmfile.cjs', 'packages/x/.npmrc', 'apps/a/bunfig.toml', '.yarn/releases/yarn.cjs', '.yarn/cache/x.zip'])).toEqual([
       'package-sources .npmrc',
       'package-sources .gitmodules',
       'package-sources .pnpmfile.cjs',
+      'package-sources packages/x/.npmrc',
+      'package-sources apps/a/bunfig.toml',
+      'package-sources .yarn/releases/yarn.cjs',
+    ])
+  })
+
+  it('ignores case, and protects tools that run on developers\' machines', () => {
+    expect(rules(['.Claude/x.md', 'docs/claude.md', 'CLAUDE.local.md', '.mcp.json', '.GitHub/x', '.husky/pre-commit', '.vscode/tasks.json', 'src/vscode.ts'])).toEqual([
+      'agent-instructions .Claude/x.md',
+      'agent-instructions docs/claude.md',
+      'agent-instructions CLAUDE.local.md',
+      'agent-instructions .mcp.json',
+      'github .GitHub/x',
+      'developer-tools .husky/pre-commit',
+      'developer-tools .vscode/tasks.json',
     ])
   })
 
@@ -31,10 +46,15 @@ describe('checkPaths', () => {
     expect(rules(['.c8y-agent/config.yml', '.github/x.yml'], { allowAgentConfig: true })).toEqual(['github .github/x.yml'])
   })
 
-  it('allows a lockfile change only with a manifest change', () => {
+  it('allows a lockfile change only with a manifest change in its package or workspace', () => {
     expect(rules(['pnpm-lock.yaml'])).toEqual(['lockfile pnpm-lock.yaml'])
-    expect(rules(['pnpm-lock.yaml', 'packages/x/package.json'])).toEqual([])
+    expect(rules(['pnpm-lock.yaml', 'package.json'])).toEqual([])
     expect(rules(['package-lock.json', 'pnpm-workspace.yaml'])).toEqual([])
+    expect(rules(['pnpm-lock.yaml', 'packages/x/package.json'], { workspaces: ['packages/*'] })).toEqual([])
+    // Any package.json elsewhere does not justify a root lockfile change.
+    expect(rules(['package-lock.json', 'test/fixtures/package.json'], { workspaces: ['packages/*'] })).toEqual(['lockfile package-lock.json'])
+    expect(rules(['apps/a/package-lock.json', 'package.json'])).toEqual(['lockfile apps/a/package-lock.json'])
+    expect(rules(['apps/a/package-lock.json', 'apps/a/package.json'])).toEqual([])
   })
 
   it('applies the protect list', () => {

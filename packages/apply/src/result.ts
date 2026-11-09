@@ -13,8 +13,14 @@ export const LIMITS = {
   labels: 10,
 }
 
-/** Labels the agent may add or remove: the `agent:` namespace. */
-export const LABEL = /^agent:[a-z0-9][a-z0-9-]{0,49}$/
+/** Labels the agent may remove: the `agent:` namespace, at most 50 characters as on GitHub. */
+export const LABEL = /^agent:[a-z0-9][a-z0-9-]{0,43}$/
+
+/**
+ * Labels the agent may add: the state labels. Not the playbook labels (`agent:<playbook>`): a label the App adds
+ * starts workflows, so the agent could start another playbook, such as `setup`, or loop.
+ */
+export const STATE_LABELS = ['agent:working', 'agent:needs-info', 'agent:needs-approval', 'agent:done', 'agent:failed', 'agent:not-runtime-verified']
 
 export type Outcome = 'pull-request' | 'comment' | 'failed'
 
@@ -42,7 +48,7 @@ const isObject = (value: unknown): value is Record<string, unknown> =>
 function unknownKeys(value: Record<string, unknown>, allowed: string[], at: string, errors: string[]): void {
   for (const key of Object.keys(value)) {
     if (!allowed.includes(key))
-      errors.push(`${at}${key}: unknown field`)
+      errors.push(`${at}${JSON.stringify(key)}: unknown field`)
   }
 }
 
@@ -53,7 +59,7 @@ function text(value: unknown, at: string, max: number, errors: string[]): void {
     errors.push(`${at}: ${value.length} characters, at most ${max}`)
 }
 
-function labels(value: unknown, at: string, errors: string[]): number {
+function labels(value: unknown, at: string, errors: string[], allowed?: string[]): number {
   if (value === undefined)
     return 0
   if (!Array.isArray(value)) {
@@ -63,6 +69,8 @@ function labels(value: unknown, at: string, errors: string[]): number {
   for (const label of value) {
     if (typeof label !== 'string' || !LABEL.test(label))
       errors.push(`${at}: ${JSON.stringify(label)} is not an agent:<name> label (lowercase letters, digits, hyphens)`)
+    else if (allowed && !allowed.includes(label))
+      errors.push(`${at}: ${label} is not a state label (${allowed.join(', ')})`)
   }
   return value.length
 }
@@ -95,7 +103,7 @@ export function parseResult(source: string): Parsed {
     }
     else {
       unknownKeys(value.labels, ['add', 'remove'], 'labels.', errors)
-      const count = labels(value.labels.add, 'labels.add', errors) + labels(value.labels.remove, 'labels.remove', errors)
+      const count = labels(value.labels.add, 'labels.add', errors, STATE_LABELS) + labels(value.labels.remove, 'labels.remove', errors)
       if (count > LIMITS.labels)
         errors.push(`labels: ${count} labels, at most ${LIMITS.labels}`)
     }

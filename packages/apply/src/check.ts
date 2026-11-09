@@ -7,7 +7,7 @@ import { git, GitError, isAncestor, resolve } from './git'
 import type { Git } from './git'
 import { checkPaths } from './paths'
 import type { Violation } from './paths'
-import { parseResult } from './result'
+import { LIMITS, parseResult } from './result'
 import type { AgentResult } from './result'
 
 export const BUNDLE_LIMITS = { bytes: 50_000_000, commits: 50 }
@@ -87,6 +87,39 @@ function protectList(run: Git, defaultRef: string, violations: Violation[]): str
   return protect as string[]
 }
 
+/** Workspace package globs on the default branch, for the lockfile rule; none when unreadable (the stricter rule). */
+function workspaceGlobs(run: Git, defaultRef: string): string[] {
+  const strings = (value: unknown): string[] => Array.isArray(value) ? value.filter((v): v is string => typeof v === 'string') : []
+  const globs: string[] = []
+  try {
+    globs.push(...strings((parseYaml(run(['show', `${defaultRef}:pnpm-workspace.yaml`], { allowFail: true })) as { packages?: unknown } | null)?.packages))
+  }
+  catch {}
+  try {
+    const workspaces = (JSON.parse(run(['show', `${defaultRef}:package.json`], { allowFail: true }) || '{}') as { workspaces?: unknown }).workspaces
+    globs.push(...strings(Array.isArray(workspaces) ? workspaces : (workspaces as { packages?: unknown } | undefined)?.packages))
+  }
+  catch {}
+  return globs
+}
+
+/** Commit message directives that make GitHub Actions skip the push's workflows. */
+const SKIP_CI = /\[(?:skip ci|ci skip|no ci|skip actions|actions skip)\]|^skip-checks:\s*true\s*$/im
+
+/**
+ * Every path any of the commits adds, changes, or deletes, sorted: a file added in one commit and removed in the next
+ * still counts, because a rebase merge keeps both commits. Gitlinks count even if .gitmodules says `ignore = all`.
+ */
+function changedPaths(run: Git, base: string, head: string): string[] {
+  const paths = new Set<string>()
+  for (const commit of run(['rev-list', '--reverse', `${base}..${head}`]).trim().split('\n').filter(Boolean)) {
+    const names = run(['diff-tree', '--no-commit-id', '--name-only', '-r', '-z', '--no-renames', '--ignore-submodules=none', commit])
+    for (const path of names.split('\0').filter(Boolean))
+      paths.add(path)
+  }
+  return [...paths].sort()
+}
+
 function fetchBundle(run: Git, file: string, violations: Violation[]): string | undefined {
   const size = statSync(file).size
   if (size > BUNDLE_LIMITS.bytes) {
@@ -106,7 +139,7 @@ function fetchBundle(run: Git, file: string, violations: Violation[]): string | 
     return undefined
   }
   const [, ref] = heads[0]!.split(' ')
-  run(['fetch', '--quiet', '--no-tags', '--no-write-fetch-head', '--force', file, `${ref}:${HEAD_REF}`])
+  run(['fetch', '--quiet', '--no-tags', '--no-write-fetch-head', '--recurse-submodules=no', '--force', file, `${ref}:${HEAD_REF}`])
   return resolve(run, HEAD_REF)
 }
 
@@ -120,8 +153,12 @@ export function check(options: CheckOptions): CheckReport {
     ({ ok: violations.length === 0, violations, branch, base: options.base, commits: 0, files: [], ...extra })
 
   let result: AgentResult | undefined
-  if (!existsSync(options.resultFile)) {
+  const resultStat = statSync(options.resultFile, { throwIfNoEntry: false })
+  if (!resultStat?.isFile()) {
     violations.push({ rule: 'result', message: 'the run wrote no result.json' })
+  }
+  else if (resultStat.size > LIMITS.resultBytes) {
+    violations.push({ rule: 'result', message: `result.json: ${resultStat.size} bytes, at most ${LIMITS.resultBytes}` })
   }
   else {
     const parsed = parseResult(readFileSync(options.resultFile, 'utf8'))
@@ -137,40 +174,48 @@ export function check(options: CheckOptions): CheckReport {
     violations.push({ rule: 'base', message: `the base commit ${options.base} is not in the checkout` })
     return report({ result })
   }
-  const branchHead = resolve(run, `origin/${branch}`)
-  if (branchHead ? branchHead !== options.base : !isAncestor(run, options.base, defaultRef)) {
-    violations.push({
-      rule: 'base',
-      message: branchHead
-        ? `${branch} is at ${branchHead.slice(0, 12)}, not at the base ${options.base.slice(0, 12)} the run started from`
-        : `the base ${options.base.slice(0, 12)} is not on ${options.defaultBranch}`,
-    })
-  }
-
   let head: string | undefined
   let commits = 0
   let files: string[] = []
   if (options.bundleFile && existsSync(options.bundleFile)) {
     try {
       head = fetchBundle(run, options.bundleFile, violations)
+      if (head && !isAncestor(run, options.base, head)) {
+        violations.push({ rule: 'bundle', message: `the bundle's commits do not start from the base ${options.base.slice(0, 12)}` })
+        head = undefined
+      }
+      else if (head) {
+        commits = Number(run(['rev-list', '--count', `${options.base}..${head}`]).trim())
+        if (commits > BUNDLE_LIMITS.commits)
+          violations.push({ rule: 'bundle', message: `the bundle has ${commits} commits, at most ${BUNDLE_LIMITS.commits}` })
+        const merges = run(['rev-list', '--merges', `${options.base}..${head}`]).trim()
+        if (merges)
+          violations.push({ rule: 'bundle', message: `the bundle has merge commits (${merges.split('\n').map(c => c.slice(0, 12)).join(', ')}); rebase instead` })
+        files = changedPaths(run, options.base, head)
+        const skipping = run(['log', '--format=%H%x00%B%x00', `${options.base}..${head}`]).split('\0')
+        for (let i = 0; i + 1 < skipping.length; i += 2) {
+          if (SKIP_CI.test(skipping[i + 1]!))
+            violations.push({ rule: 'bundle', message: `commit ${skipping[i]!.trim().slice(0, 12)} tells GitHub Actions to skip CI ([skip ci] or similar)` })
+        }
+      }
     }
     catch (error) {
       if (!(error instanceof GitError))
         throw error
       violations.push({ rule: 'bundle', message: error.message })
     }
-    if (head && !isAncestor(run, options.base, head)) {
-      violations.push({ rule: 'bundle', message: `the bundle's commits do not start from the base ${options.base.slice(0, 12)}` })
-    }
-    else if (head) {
-      commits = Number(run(['rev-list', '--count', `${options.base}..${head}`]).trim())
-      if (commits > BUNDLE_LIMITS.commits)
-        violations.push({ rule: 'bundle', message: `the bundle has ${commits} commits, at most ${BUNDLE_LIMITS.commits}` })
-      const merges = run(['rev-list', '--merges', `${options.base}..${head}`]).trim()
-      if (merges)
-        violations.push({ rule: 'bundle', message: `the bundle has merge commits (${merges.split('\n').map(c => c.slice(0, 12)).join(', ')}); rebase instead` })
-      files = run(['diff', '--name-only', '--no-renames', '-z', options.base, head]).split('\0').filter(Boolean)
-    }
+  }
+
+  // A new branch starts from the default branch; a rework round from the agent branch's head. The branch may also be
+  // at the bundle's head already: a re-run of an apply job whose push succeeded before a later write failed.
+  const branchHead = resolve(run, `origin/${branch}`)
+  if (branchHead ? branchHead !== options.base && branchHead !== head : !isAncestor(run, options.base, defaultRef)) {
+    violations.push({
+      rule: 'base',
+      message: branchHead
+        ? `${branch} is at ${branchHead.slice(0, 12)}, not at the base ${options.base.slice(0, 12)} the run started from`
+        : `the base ${options.base.slice(0, 12)} is not on ${options.defaultBranch}`,
+    })
   }
 
   if (result?.outcome === 'pull-request' && commits === 0 && !violations.some(v => v.rule === 'bundle'))
@@ -180,7 +225,7 @@ export function check(options: CheckOptions): CheckReport {
 
   const protect = protectList(run, defaultRef, violations)
   const allowAgentConfig = options.playbook === 'setup' && result?.pullRequest?.draft === true
-  violations.push(...checkPaths(files, { protect, allowAgentConfig }))
+  violations.push(...checkPaths(files, { protect, allowAgentConfig, workspaces: workspaceGlobs(run, defaultRef) }))
 
   return report({ result, head, commits, files })
 }

@@ -59,6 +59,30 @@ describe('check', () => {
     expect(report.files).toContain('src/app.ts')
   })
 
+  it('checks the paths of every commit, not only the net change', () => {
+    commit(r.agent, { '.github/workflows/x.yml': 'on: push\n' })
+    run(r.agent, 'rm', '--quiet', '.github/workflows/x.yml')
+    run(r.agent, 'commit', '--quiet', '-m', 'remove')
+    commit(r.agent, { 'src/app.ts': 'x\n' })
+    const report = agentRun(PR)
+    expect(report.files).toEqual(['.github/workflows/x.yml', 'src/app.ts'])
+    expect(rules(report)).toEqual(['github'])
+  })
+
+  it('rejects commits that skip CI', () => {
+    commit(r.agent, { 'src/app.ts': 'x\n' }, 'fix: x [skip ci]')
+    commit(r.agent, { 'src/app.ts': 'y\n' }, 'fix: y\n\nskip-checks: true')
+    expect(agentRun(PR).violations.map(v => v.message)).toEqual([
+      expect.stringMatching(/^commit [0-9a-f]{12} tells GitHub Actions to skip CI/),
+      expect.stringMatching(/^commit [0-9a-f]{12} tells GitHub Actions to skip CI/),
+    ])
+  })
+
+  it('reports a result.json that is not a file', () => {
+    const report = check({ dir: r.fresh, resultFile: r.root, base: r.base, defaultBranch: 'main', number: 12, playbook: 'fix' })
+    expect(report.violations).toEqual([{ rule: 'result', message: 'the run wrote no result.json' }])
+  })
+
   it('reads protect from the default branch, not from the agent\'s commits', () => {
     commit(r.agent, { '.c8y-agent/config.yml': 'protect: []\n', 'src/generated/a.ts': 'x\n' })
     expect(rules(agentRun(PR))).toEqual(['agent-config', 'protect'])
@@ -131,6 +155,17 @@ describe('check', () => {
     expect(() => check({ ...base, playbook: '../x' })).toThrow(UsageError)
     expect(() => check({ ...base, base: 'main' })).toThrow(UsageError)
     expect(() => check({ ...base, defaultBranch: 'gone' })).toThrow(/origin\/gone is not in the checkout/)
+  })
+
+  it('limits the commits and the heads of a bundle', () => {
+    for (let i = 0; i < 51; i++)
+      commit(r.agent, { 'src/app.ts': `${i}\n` })
+    expect(agentRun(PR).violations.map(v => v.message)).toEqual(['the bundle has 51 commits, at most 50'])
+
+    run(r.agent, 'branch', 'second')
+    run(r.agent, 'bundle', 'create', '--quiet', join(r.root, 'two.bundle'), 'main', 'second', `^${r.base}`)
+    const report = check({ dir: r.fresh, resultFile: join(r.root, 'result.json'), bundleFile: join(r.root, 'two.bundle'), base: r.base, defaultBranch: 'main', number: 12, playbook: 'fix' })
+    expect(report.violations.map(v => v.message)).toContain('the bundle must have one head, not 2')
   })
 })
 

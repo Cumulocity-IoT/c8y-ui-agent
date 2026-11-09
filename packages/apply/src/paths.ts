@@ -1,4 +1,4 @@
-// Protected paths (D2): files the agent's commits must not add, change, delete, or rename. See docs/result.md.
+// Protected paths (D2, D16): files the agent's commits must not add, change, delete, or rename. See docs/result.md.
 import { posix } from 'node:path'
 
 export interface Violation {
@@ -8,22 +8,34 @@ export interface Violation {
 }
 
 const LOCKFILES = ['pnpm-lock.yaml', 'package-lock.json', 'npm-shrinkwrap.json', 'yarn.lock', 'bun.lock', 'bun.lockb']
-/** A changed lockfile needs one of these changed too: a dependency change, not only a new resolution. */
+/** A changed lockfile needs one of these changed in its package: a dependency change, not only a new resolution. */
 const MANIFESTS = ['package.json', 'pnpm-workspace.yaml']
 
-/** Built-in rules: a path, and why it is protected. */
+const segments = (path: string): string[] => path.toLowerCase().split('/')
+const name = (path: string): string => posix.basename(path).toLowerCase()
+
+/**
+ * Built-in rules. Matching ignores case: a checkout on macOS or Windows reads `.Claude/` and `claude.md` as well.
+ */
 const RULES: Array<{ rule: string, matches: (path: string) => boolean, why: string }> = [
-  { rule: 'github', matches: p => p.startsWith('.github/'), why: 'workflows and repository automation' },
-  { rule: 'agent-config', matches: p => p.startsWith('.c8y-agent/'), why: 'the agent configuration' },
+  { rule: 'github', matches: p => segments(p)[0] === '.github', why: 'workflows and repository automation' },
+  { rule: 'agent-config', matches: p => segments(p)[0] === '.c8y-agent', why: 'the agent configuration' },
   {
     rule: 'agent-instructions',
-    matches: p => p.split('/').includes('.claude') || ['AGENTS.md', 'CLAUDE.md'].includes(posix.basename(p)),
-    why: 'instructions for agents (.claude/, AGENTS.md, CLAUDE.md)',
+    matches: p => segments(p).includes('.claude') || ['agents.md', 'claude.md', 'claude.local.md', '.mcp.json'].includes(name(p)),
+    why: 'instructions and tools for agents',
   },
   {
     rule: 'package-sources',
-    matches: p => ['.gitmodules', '.npmrc', '.yarnrc.yml', '.pnpmfile.cjs', '.pnpmfile.mjs'].includes(p),
+    matches: p => ['.npmrc', '.yarnrc', '.yarnrc.yml', 'bunfig.toml', '.pnpmfile.cjs', '.pnpmfile.mjs'].includes(name(p))
+      || segments(p)[0] === '.gitmodules'
+      || /^\.yarn\/(?:releases|plugins)\//.test(p.toLowerCase()),
     why: 'where code and packages come from, or code that runs on install',
+  },
+  {
+    rule: 'developer-tools',
+    matches: p => ['.husky', '.vscode', '.devcontainer'].includes(segments(p)[0]!),
+    why: 'code that runs on developers\' machines',
   },
 ]
 
@@ -67,9 +79,21 @@ export interface PathOptions {
   protect?: string[]
   /** The `setup` playbook may change `.c8y-agent/`, in a draft pull request only. */
   allowAgentConfig?: boolean
+  /** Workspace package globs of the root lockfile (pnpm-workspace.yaml `packages`, package.json `workspaces`). */
+  workspaces?: string[]
 }
 
-/** The violations of a change, given every path it adds, changes, or deletes (both sides of a rename). */
+const dir = (path: string): string => posix.dirname(path)
+
+/** Whether a changed manifest belongs to the lockfile's package: the same directory, or a workspace package of a root lockfile. */
+function justifies(lockfile: string, manifest: string, workspaces: string[]): boolean {
+  if (dir(manifest) === dir(lockfile))
+    return true
+  return dir(lockfile) === '.' && name(manifest) === 'package.json'
+    && workspaces.some(glob => !glob.startsWith('!') && globMatches(glob.replace(/\/$/, ''), dir(manifest)))
+}
+
+/** The violations of a change, given every path its commits add, change, or delete (both sides of a rename). */
 export function checkPaths(paths: string[], options: PathOptions = {}): Violation[] {
   const violations: Violation[] = []
   for (const path of paths) {
@@ -84,10 +108,10 @@ export function checkPaths(paths: string[], options: PathOptions = {}): Violatio
         violations.push({ rule: 'protect', file: path, message: `${path} is protected by "${pattern}" in .c8y-agent/config.yml` })
     }
   }
-  const lockfiles = paths.filter(p => LOCKFILES.includes(posix.basename(p)))
-  if (lockfiles.length > 0 && !paths.some(p => MANIFESTS.includes(posix.basename(p)))) {
-    for (const file of lockfiles)
-      violations.push({ rule: 'lockfile', file, message: `${file} changes without a change to a package.json or pnpm-workspace.yaml` })
+  const manifests = paths.filter(p => MANIFESTS.includes(name(p)))
+  for (const file of paths.filter(p => LOCKFILES.includes(name(p)))) {
+    if (!manifests.some(manifest => justifies(file, manifest, options.workspaces ?? [])))
+      violations.push({ rule: 'lockfile', file, message: `${file} changes without a change to a package.json or pnpm-workspace.yaml of its package` })
   }
   return violations
 }

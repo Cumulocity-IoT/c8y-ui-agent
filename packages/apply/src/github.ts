@@ -16,7 +16,7 @@ export class GitHubError extends Error {
 }
 
 export interface Comment { id: number, body?: string, user?: { login: string } | null }
-export interface PullRequest { number: number, html_url: string }
+export interface PullRequest { number: number, html_url: string, draft?: boolean }
 
 export class GitHub {
   private readonly api: string

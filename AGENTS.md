@@ -33,7 +33,7 @@ packages/apply/       @cumulocity-iot/c8y-ui-apply: result.json, the agent's git
 
 ## Package rules
 
-- Nothing may write to stdout in MCP mode: pass an output callback to every SDK call and child process.
+- Workbench: nothing may write to stdout in MCP mode. Pass an output callback to every SDK call and child process.
 - `prove_regression` rules live in `src/evaluate.ts` as a pure function with unit tests; change `docs/prove-regression.md` with them.
 - The apply package (`packages/apply`) has no runtime dependencies: bundle what it needs, and take every input that decides where a result goes from the workflow, never from the agent's files (D16). Change `docs/result.md` with its rules.
 - The reporter (`reporter/index.cjs`) runs inside Cypress: CommonJS, no dependencies. Its unit test mirrors the event shape of Cypress 15; check it against a real Cypress run after a Cypress major.
