@@ -6,6 +6,7 @@ A GitHub App that works on Cumulocity Web SDK apps and plugins with Claude Code.
 
 - [docs/decisions.md](docs/decisions.md): decisions taken and why. Add a decision when you take one.
 - [docs/prove-regression.md](docs/prove-regression.md): the rules of `prove_regression`.
+- [docs/result.md](docs/result.md): `result.json`, the bundle, and the apply job's rules.
 
 Keep knowledge in the repository, not in a private agent memory.
 
@@ -22,12 +23,19 @@ packages/workbench/   @cumulocity-iot/c8y-ui-workbench: MCP server on the Cumulo
   src/regression.ts   prove_regression: base worktree, three runs
   src/evaluate.ts     prove_regression's rules (docs/prove-regression.md)
   src/server.ts       the MCP tools; src/cli.ts the bin
+packages/apply/       @cumulocity-iot/c8y-ui-apply: result.json, the agent's git bundle, and the apply job's check and writes
+  src/result.ts       result.json format and validation
+  src/paths.ts        protected paths
+  src/check.ts        the check in a fresh checkout, before any token
+  src/apply.ts        push, pull request, labels, status comment; src/github.ts the REST calls
+  src/bundle.ts       the agent job's bundle; src/cli.ts the bin
 ```
 
-## Workbench rules
+## Package rules
 
 - Nothing may write to stdout in MCP mode: pass an output callback to every SDK call and child process.
 - `prove_regression` rules live in `src/evaluate.ts` as a pure function with unit tests; change `docs/prove-regression.md` with them.
+- The apply package (`packages/apply`) has no runtime dependencies: bundle what it needs, and take every input that decides where a result goes from the workflow, never from the agent's files (D16). Change `docs/result.md` with its rules.
 - The reporter (`reporter/index.cjs`) runs inside Cypress: CommonJS, no dependencies. Its unit test mirrors the event shape of Cypress 15; check it against a real Cypress run after a Cypress major.
 
 ## Rules

@@ -1,0 +1,44 @@
+{
+  "name": "@cumulocity-iot/c8y-ui-apply",
+  "version": "0.0.0-development",
+  "type": "module",
+  "description": "The C8Y UI Agent's apply step: validate an agent run's result file and git bundle in a fresh checkout, then write them to GitHub.",
+  "author": "Cumulocity GmbH",
+  "license": "Apache-2.0",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Cumulocity-IoT/c8y-ui-agent.git",
+    "directory": "packages/apply"
+  },
+  "publishConfig": {
+    "registry": "https://npm.pkg.github.com"
+  },
+  "engines": {
+    "node": ">=22.13.0"
+  },
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.mts",
+      "default": "./dist/index.mjs"
+    },
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsdown",
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "@types/node": "catalog:",
+    "tsdown": "catalog:",
+    "typescript": "catalog:",
+    "vitest": "catalog:",
+    "yaml": "^2.9.1"
+  },
+  "bin": {
+    "c8y-ui-apply": "./dist/cli.mjs"
+  }
+}

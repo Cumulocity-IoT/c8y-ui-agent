@@ -40,11 +40,29 @@ importers:
         specifier: 'catalog:'
         version: 6.0.3
 
+  packages/apply:
+    devDependencies:
+      '@types/node':
+        specifier: 'catalog:'
+        version: 24.19.2
+      tsdown:
+        specifier: 'catalog:'
+        version: 0.23.1(typescript@6.0.3)
+      typescript:
+        specifier: 'catalog:'
+        version: 6.0.3
+      vitest:
+        specifier: 'catalog:'
+        version: 5.0.5(@types/node@24.19.2)(vite@8.3.5(@types/node@24.19.2)(yaml@2.9.1))
+      yaml:
+        specifier: ^2.9.1
+        version: 2.9.1
+
   packages/workbench:
     dependencies:
       '@cumulocity-iot/ui-sdk':
         specifier: ^2.3.1
-        version: 2.3.1(@module-federation/vite@1.23.5(typescript@6.0.3)(vite@8.3.5(@types/node@24.19.2)))(@oxc-angular/vite@0.0.42(vite@8.3.5(@types/node@24.19.2)))(cypress@14.5.4)
+        version: 2.3.1(@module-federation/vite@1.23.5(typescript@6.0.3)(vite@8.3.5(@types/node@24.19.2)(yaml@2.9.1)))(@oxc-angular/vite@0.0.42(vite@8.3.5(@types/node@24.19.2)(yaml@2.9.1)))(cypress@14.5.4)
       '@modelcontextprotocol/sdk':
         specifier: ^1.32.1
         version: 1.32.1(supports-color@8.1.1)(zod@4.6.7)
@@ -66,7 +84,7 @@ importers:
         version: 6.0.3
       vitest:
         specifier: 'catalog:'
-        version: 5.0.5(@types/node@24.19.2)(vite@8.3.5(@types/node@24.19.2))
+        version: 5.0.5(@types/node@24.19.2)(vite@8.3.5(@types/node@24.19.2)(yaml@2.9.1))
 
 packages:
 
@@ -2693,6 +2711,11 @@ packages:
     resolution: {integrity: sha512-0pfFzegeDWJHJIAmTLRP2DwHjdF5s7jo9tuztdQxAhINCdvS+3nGINqPd00AphqJR/0LhANUS6/+7SCb98YOfA==}
     engines: {node: '>=10'}
 
+  yaml@2.9.1:
+    resolution: {integrity: sha512-3NxN8+78OdzbT7C/WjGsyfPAtJaN3FNDsWxv7Y7mcDsT/oOmgW8BpyQQFFBnvZE3j9Y2Sdz1ULFLezL7Eb2yFw==}
+    engines: {node: '>= 14.6'}
+    hasBin: true
+
   yargs-parser@20.2.9:
     resolution: {integrity: sha512-y11nGElTIV+CT3Zv9t7VKl+Q3hTQoT9a1Qzezhhl6Rp21gJ/IVTW7Z3y9EWXhuUBC2Shnf+DX0antecpAwSP8w==}
     engines: {node: '>=10'}
@@ -2769,10 +2792,10 @@ snapshots:
   '@colors/colors@1.5.0':
     optional: true
 
-  '@cumulocity-iot/ui-sdk@2.3.1(@module-federation/vite@1.23.5(typescript@6.0.3)(vite@8.3.5(@types/node@24.19.2)))(@oxc-angular/vite@0.0.42(vite@8.3.5(@types/node@24.19.2)))(cypress@14.5.4)':
+  '@cumulocity-iot/ui-sdk@2.3.1(@module-federation/vite@1.23.5(typescript@6.0.3)(vite@8.3.5(@types/node@24.19.2)(yaml@2.9.1)))(@oxc-angular/vite@0.0.42(vite@8.3.5(@types/node@24.19.2)(yaml@2.9.1)))(cypress@14.5.4)':
     dependencies:
-      '@module-federation/vite': 1.23.5(typescript@6.0.3)(vite@8.3.5(@types/node@24.19.2))
-      '@oxc-angular/vite': 0.0.42(vite@8.3.5(@types/node@24.19.2))
+      '@module-federation/vite': 1.23.5(typescript@6.0.3)(vite@8.3.5(@types/node@24.19.2)(yaml@2.9.1))
+      '@oxc-angular/vite': 0.0.42(vite@8.3.5(@types/node@24.19.2)(yaml@2.9.1))
       citty: 0.2.2
       cypress: 14.5.4
       fflate: 0.8.3
@@ -2876,12 +2899,12 @@ snapshots:
 
   '@module-federation/third-party-dts-extractor@2.9.2': {}
 
-  '@module-federation/vite@1.23.5(typescript@6.0.3)(vite@8.3.5(@types/node@24.19.2))':
+  '@module-federation/vite@1.23.5(typescript@6.0.3)(vite@8.3.5(@types/node@24.19.2)(yaml@2.9.1))':
     dependencies:
       '@module-federation/dts-plugin': 2.9.2(typescript@6.0.3)
       '@module-federation/runtime': 2.9.2
       '@module-federation/sdk': 2.9.2
-      vite: 8.3.5(@types/node@24.19.2)
+      vite: 8.3.5(@types/node@24.19.2)(yaml@2.9.1)
     transitivePeerDependencies:
       - bufferutil
       - typescript
@@ -2978,10 +3001,10 @@ snapshots:
   '@oxc-angular/binding-win32-x64-msvc@0.0.42':
     optional: true
 
-  '@oxc-angular/vite@0.0.42(vite@8.3.5(@types/node@24.19.2))':
+  '@oxc-angular/vite@0.0.42(vite@8.3.5(@types/node@24.19.2)(yaml@2.9.1))':
     dependencies:
       obug: 3.0.0
-      vite: 8.3.5(@types/node@24.19.2)
+      vite: 8.3.5(@types/node@24.19.2)(yaml@2.9.1)
     optionalDependencies:
       '@oxc-angular/binding-darwin-arm64': 0.0.42
       '@oxc-angular/binding-darwin-x64': 0.0.42
@@ -3174,14 +3197,14 @@ snapshots:
       '@types/node': 24.19.2
     optional: true
 
-  '@vitest/mocker@5.0.5(vite@8.3.5(@types/node@24.19.2))':
+  '@vitest/mocker@5.0.5(vite@8.3.5(@types/node@24.19.2)(yaml@2.9.1))':
     dependencies:
       '@jridgewell/trace-mapping': 0.3.31
       '@vitest/spy': 5.0.5
       estree-walker: 3.0.3
       magic-string: 1.4.3
     optionalDependencies:
-      vite: 8.3.5(@types/node@24.19.2)
+      vite: 8.3.5(@types/node@24.19.2)(yaml@2.9.1)
 
   '@vitest/spy@5.0.5': {}
 
@@ -5109,7 +5132,7 @@ snapshots:
       core-util-is: 1.0.2
       extsprintf: 1.3.0
 
-  vite@8.3.5(@types/node@24.19.2):
+  vite@8.3.5(@types/node@24.19.2)(yaml@2.9.1):
     dependencies:
       lightningcss: 1.33.0
       picomatch: 4.0.7
@@ -5119,11 +5142,12 @@ snapshots:
     optionalDependencies:
       '@types/node': 24.19.2
       fsevents: 2.3.3
+      yaml: 2.9.1
 
-  vitest@5.0.5(@types/node@24.19.2)(vite@8.3.5(@types/node@24.19.2)):
+  vitest@5.0.5(@types/node@24.19.2)(vite@8.3.5(@types/node@24.19.2)(yaml@2.9.1)):
     dependencies:
       '@types/chai': 5.2.3
-      '@vitest/mocker': 5.0.5(vite@8.3.5(@types/node@24.19.2))
+      '@vitest/mocker': 5.0.5(vite@8.3.5(@types/node@24.19.2)(yaml@2.9.1))
       chai: 6.3.0
       es-module-lexer: 2.3.2
       expect-type: 1.4.0
@@ -5134,7 +5158,7 @@ snapshots:
       tinybench: 6.2.2
       tinyexec: 1.3.1
       tinyglobby: 0.2.17
-      vite: 8.3.5(@types/node@24.19.2)
+      vite: 8.3.5(@types/node@24.19.2)(yaml@2.9.1)
       why-is-node-running: 3.2.1
     optionalDependencies:
       '@types/node': 24.19.2
@@ -5176,6 +5200,8 @@ snapshots:
   xtend@4.0.2: {}
 
   y18n@5.0.8: {}
+
+  yaml@2.9.1: {}
 
   yargs-parser@20.2.9: {}
 
