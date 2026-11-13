@@ -21,16 +21,18 @@ Phase 1 of 6, the workbench, is done: `preview_up`, `screenshot`, `check` and `p
 
 ```
 packages/workbench/   @cumulocity-iot/c8y-ui-workbench: MCP server that previews an app on the emulated tenant and proves regressions with e2e runs
-packages/apply/       @cumulocity-iot/c8y-ui-apply: result.json, the agent's git bundle, and the apply job's check and writes
+packages/apply/       @cumulocity-iot/c8y-ui-apply: result.json, the agent's git bundle, the apply job's check and writes, and playbook resolution
+pack/                 the agent pack: run prompt, playbooks triage and fix, roles, guardrail hooks (a Claude Code plugin, not published)
 docs/decisions.md     decisions taken and why
 docs/prove-regression.md  the rules of prove_regression
 docs/result.md        result.json and the apply job
 docs/discovery.md     the repository profile and its corrections in .c8y-agent/config.yml
+docs/pack.md          the agent pack: playbooks, roles, hooks, and how a run starts
 docs/github-app.md    registering the GitHub App
 docs/pilot-sessions.md  agent sessions on real issues, and what they changed
 ```
 
-Later phases add `pack/` (playbooks, skills, roles, hooks) and `.github/workflows/run.yml` (the reusable workflow that repositories call).
+Next: `.github/workflows/run.yml`, the reusable workflow that repositories call.
 
 ## Versions
 

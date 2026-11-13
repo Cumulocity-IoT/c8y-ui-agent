@@ -30,3 +30,16 @@ Agent sessions on real issues before the playbooks exist (D13). Each records the
 | The agent searched minified `@c8y` bundles in `node_modules` for header internals, and used the knowledge server once. | Plan for the playbooks: the knowledge server answers API questions; no reading of bundles. |
 | `check` and preview builds leave `packages/<app>/dist/` untracked in the checkout. The toolkit does not ignore it. | Plan for the playbooks: commit named files only (`git add <file>`, never `git add -A`). `c8y-ui-apply bundle` already lists uncommitted files. |
 | `check` results were 4 to 15 kB (3,000 to 4,000 tokens): the passed tests and the gaps with their tests. | None: compact JSON and dropping redundant fields would save at most 30%. |
+
+## 2026-11-13: the agent pack's `triage` on cumulocity-ui-toolkit#61
+
+**Setup.** The same issue and worktree as the first session, with the pack (D18) as the workflow will load it: the system prompt from `c8y-ui-apply playbook triage --prompt`, the pack as `--plugin-dir`, the run directory with `context/issue.md` and `profile.json`, and the task message of [pack.md](pack.md). The workbench took its settings from discovery, plus `--world` (the UI SDK's template world) and `--e2e-env`. Claude Code 2.1.323, Opus 5.5, permission mode `dontAsk` with a shell allowlist.
+
+**Outcome.** 8 minutes, 39 turns, USD 1.19, a valid `result.json`: outcome `comment`, `agent:needs-info`. The preview did not build (UI SDK issue #42); the agent reproduced through `check` with a throwaway spec in five variations (viewports, the user menu), none showed the bug. It traced the likely fix to #98 and asked four concrete questions. It named the tenant-option 404s (UI SDK issue #57) and why they do not change the result. The roles and both MCP servers loaded; the guard denied nothing.
+
+**Findings.**
+
+| Finding | Change |
+|---|---|
+| The agent tried to delete `packages/reminder/dist/`, which the build left, to satisfy "`git status` must show no changes"; the allowlist denied `rm -r`. | `triage.md` and `run.md`: build output the tools leave is not the agent's change; it stays and is not committed. |
+| Four shell calls were denied by the local allowlist (`cd … &&`, `mv`, `rm` of the spec). | None in the pack: the workflow allows the shell on the agent's runner (D18). |

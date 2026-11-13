@@ -1,0 +1,11 @@
+{
+  "description": "C8Y UI Agent guard: denies pushes, GitHub CLI calls, merges, staging everything, and edits of protected paths. See docs/pack.md.",
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Bash|Edit|Write|MultiEdit|NotebookEdit",
+        "hooks": [{ "type": "command", "command": "node \"${CLAUDE_PLUGIN_ROOT}/hooks/guard.mjs\"", "timeout": 10 }]
+      }
+    ]
+  }
+}

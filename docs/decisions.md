@@ -145,3 +145,17 @@ Not yet detected, from the specification's table: the test stack beyond Cypress,
 Rejected: a separate discovery package, which the agent job would install next to the workbench for the same data; discovery in the filter or context job, before the install, without installed versions.
 
 Decided on 2026-11-13.
+
+## D18: The agent pack is a Claude Code plugin in this repository; the apply package resolves playbooks
+
+The pack (`pack/`, [pack.md](pack.md)) holds the run prompt, the built-in playbooks `triage` and `fix`, the roles, and the guardrail hooks.
+
+- **A plugin, loaded from a checkout:** Claude Code loads the roles and hooks with `--plugin-dir` (verified with Claude Code 2.1.323: plugin hooks run with `--setting-sources user`, and plugin roles are named `c8y-ui-agent:<role>`). The reusable workflow checks out this repository at `job.workflow_sha`, so the pack has the version of the workflow that runs it. It is not published: a package would be a second version to keep in step.
+- **Playbook resolution in the apply package:** a playbook's evidence level and result decide what the apply job may accept, so the workflow resolves them in its trusted jobs, from the default branch, and passes them on; the agent's files decide nothing (D16). The apply package already runs there, reads `.c8y-agent/config.yml`, and has no runtime dependencies; the workbench is installed only in the agent job. `c8y-ui-apply playbook` also writes the system prompt.
+- **Roles:** the orchestrator is the main session, so the playbook is its system prompt. The developer and the verifier are subagents; the verifier gets a fresh context, read tools, and the sonnet model. The verdict that counts is `prove_regression`'s, which the orchestrator runs, not the verifier's.
+- **Hooks against mistakes:** the D13 pilot lost turns to denied shell calls. The agent job's runner is discarded and holds no credential (D2), so the workflow will allow the shell, and the guard denies a few mistakes that cost a run: pushes, merges, `gh`, staging everything, and edits of the agent configuration and `.github/`. The apply job's check covers more (D16); the guard is not a security boundary.
+- **Unsupported fields are errors:** `gate: plan` and `choice`, `result: review`, and `models` need the status comment and the playbooks of phase 5. A repository that sets them gets an error, not a playbook that ignores them.
+
+Rejected: playbook resolution in the workbench, which the filter, context, and apply jobs do not install; the agent reading playbook files itself, which lets the agent's runner decide the evidence level; a published pack package.
+
+Decided on 2026-11-13.

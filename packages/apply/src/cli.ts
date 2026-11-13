@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 // c8y-ui-apply: the agent job's bundle and result check, and the apply job's check and writes. See docs/result.md.
-import { appendFileSync, readFileSync } from 'node:fs'
+import { appendFileSync, readFileSync, writeFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { parseArgs } from 'node:util'
 import { apply } from './apply'
@@ -8,12 +8,17 @@ import { bundle } from './bundle'
 import { check, UsageError } from './check'
 import type { CheckOptions } from './check'
 import { GitHub } from './github'
+import { listPlaybooks, resolvePlaybook, runPrompt } from './playbook'
 import { parseResult } from './result'
 
 const USAGE = `Usage:
   c8y-ui-apply validate <result.json>        check result.json (for the agent; exit 1 with the errors)
   c8y-ui-apply bundle --base <sha> --out <file> [--dir <checkout>]
                                              the agent's commits since the base as a git bundle
+  c8y-ui-apply playbooks --pack <dir> [--dir <checkout>]
+                                             the playbooks the repository can run (docs/pack.md)
+  c8y-ui-apply playbook <name> --pack <dir> [--dir <checkout>] [--prompt <file>]
+                                             one playbook; --prompt writes the run's system prompt
   c8y-ui-apply check <options>               check result and bundle in a fresh checkout; no token
   c8y-ui-apply apply <options> --bot-login <login> [--run-url <url>]
                                              check again, then push, open the pull request, label and comment;
@@ -26,6 +31,7 @@ Options of check and apply:
   --default-branch <name>  the repository's default branch
   --number <n>             the issue or pull request of the run
   --playbook <name>        the run's playbook
+  --playbook-result <r>    its result from c8y-ui-apply playbook: pull-request or comment (comment allows no pull request)
   --dir <checkout>         the fresh checkout, with fetch-depth 0 (default: the working directory)
   --default-ref <ref>      the default branch in the checkout (default: origin/<default-branch>)
 `
@@ -40,8 +46,11 @@ const { values, positionals } = parseArgs({
     'default-ref': { type: 'string' },
     'number': { type: 'string' },
     'playbook': { type: 'string' },
+    'playbook-result': { type: 'string' },
     'dir': { type: 'string' },
     'out': { type: 'string' },
+    'pack': { type: 'string' },
+    'prompt': { type: 'string' },
     'bot-login': { type: 'string' },
     'run-url': { type: 'string' },
     'help': { type: 'boolean', short: 'h' },
@@ -69,6 +78,7 @@ function checkOptions(): CheckOptions {
     defaultRef: values['default-ref'],
     number: Number(required('number')),
     playbook: required('playbook'),
+    playbookResult: values['playbook-result'] as CheckOptions['playbookResult'],
   }
 }
 
@@ -102,6 +112,25 @@ async function main(): Promise<number> {
       if (result.uncommitted.length > 0)
         log(`not in the bundle, because not committed: ${result.uncommitted.join(', ')}`)
       out(result)
+      return 0
+    }
+    case 'playbooks': {
+      const list = listPlaybooks({ pack: resolve(required('pack')), dir: resolve(values.dir ?? '.') })
+      for (const error of list.errors)
+        log(error)
+      out({ ...list, playbooks: list.playbooks.map(({ body: _body, ...playbook }) => playbook) })
+      return 0
+    }
+    case 'playbook': {
+      if (!file)
+        throw new UsageError('playbook needs a name')
+      const pack = resolve(required('pack'))
+      const playbook = resolvePlaybook(file, { pack, dir: resolve(values.dir ?? '.') })
+      if (values.prompt)
+        writeFileSync(resolve(values.prompt), runPrompt(playbook, pack))
+      output('evidence', playbook.evidence)
+      output('result', playbook.result)
+      out(playbook)
       return 0
     }
     case 'check': {

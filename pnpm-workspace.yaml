@@ -1,5 +1,6 @@
 packages:
   - packages/*
+  - pack
 
 # Supply-chain settings, the same as in the Cumulocity UI SDK.
 # A version must be at least 7 days (10080 minutes) old before it is installed. Exclude only our own packages.
