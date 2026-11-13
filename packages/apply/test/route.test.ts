@@ -26,6 +26,13 @@ describe('parseCommand', () => {
     expect(parseCommand('~~~md\n```\n@c8y-ui-agent fix\n~~~\n@c8y-ui-agent triage')).toEqual({ name: 'triage', request: '' })
     expect(parseCommand('@c8y-ui-agent-bot fix')).toBeUndefined()
   })
+
+  it('closes a fence only with a fence of the same character, as long, without info string', () => {
+    expect(parseCommand('````\n```\n@c8y-ui-agent fix\n````')).toBeUndefined()
+    expect(parseCommand('```\n```js\n@c8y-ui-agent fix\n```')).toBeUndefined()
+    expect(parseCommand('    @c8y-ui-agent fix')).toBeUndefined()
+    expect(parseCommand('```\ncode\n```\n@c8y-ui-agent fix')).toEqual({ name: 'fix', request: '' })
+  })
 })
 
 describe('route', () => {
@@ -59,6 +66,18 @@ describe('route', () => {
     expect(route('issues', labeled('agent:Fix'))).toMatchObject({ run: false })
     expect(route('issues', { ...labeled('agent:fix'), sender: { login: 'c8y-ui-agent[bot]', type: 'Bot' } })).toMatchObject({ run: false })
     expect(route('issues', { ...labeled('agent:fix'), action: 'opened' })).toMatchObject({ run: false })
+  })
+
+  it('does not run for a label an issue template adds for an author who cannot start runs', () => {
+    const fromTemplate = (association: string): Record<string, unknown> => ({
+      action: 'labeled',
+      sender: { login: 'stranger', type: 'User' },
+      issue: { number: 7, user: { login: 'stranger' }, author_association: association },
+      label: { name: 'agent:triage' },
+    })
+    expect(route('issues', fromTemplate('NONE'))).toMatchObject({ run: false, reason: expect.stringContaining('issue\'s author') })
+    expect(route('issues', fromTemplate('MEMBER'))).toMatchObject({ run: true, playbook: 'triage' })
+    expect(route('issues', { ...fromTemplate('NONE'), sender: { login: 'maintainer', type: 'User' } })).toMatchObject({ run: true })
   })
 
   it('takes a dispatch\'s inputs, and rejects invalid ones', () => {

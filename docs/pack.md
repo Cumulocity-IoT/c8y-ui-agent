@@ -66,7 +66,7 @@ The reusable workflow ([workflow.md](workflow.md)) prepares a run directory outs
 ```
 <run>/system.md          run.md and the playbook, from c8y-ui-apply playbook in the context job
 <run>/context/issue.md   the issue thread, from the context job
-<run>/context/request.md the comment that started the run, if one did
+<run>/context/request.md the words after the command, if a comment started the run
 <run>/profile.json       c8y-ui-workbench profile
 <run>/mcp.json           the servers c8y-ui-workbench and c8y-web-sdk-knowledge
 <run>/result.json        written by the agent

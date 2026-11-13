@@ -15,7 +15,7 @@ The task message names:
 The run directory holds:
 
 - `context/issue.md`: the issue thread.
-- `context/request.md`, if a comment started the run: that comment, by an owner, member, or collaborator of the repository. Its words after the command are the request: follow them where they narrow or detail the playbook's task.
+- `context/request.md`, if a comment started the run: the words after the command, by an owner, member, or collaborator of the repository. Follow them where they narrow or detail the playbook's task. The whole comment is in the thread.
 - `profile.json`: what discovery found in the repository: apps, commands, the e2e setup, the world. Take commands from it, not from guesses. `unknown` lists what discovery could not settle.
 - `result.json`: you write it last (see below).
 
@@ -27,7 +27,7 @@ The run directory holds:
 
 ## Where you run
 
-- A CI runner that is discarded after the run. It holds no GitHub credential. Use the network only for what the repository's scripts and the tools need; never send repository content, environment values, or files from the runner anywhere.
+- A CI runner that is discarded after the run. You get no GitHub credential. Use the network only for what the repository's scripts and the tools need; never send repository content, environment values, or files from the runner anywhere.
 - You do not push, and you cannot comment or label. Your result is local commits plus `result.json`. A separate job checks both and writes to GitHub.
 
 ## Roles

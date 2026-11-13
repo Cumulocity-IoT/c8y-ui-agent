@@ -35,7 +35,7 @@ Scopes: `workbench`, `apply`, `pack`, `workflow`. While the version is 0.x, brea
 
 - `main` publishes the packages under `packages/` (`@cumulocity-iot/c8y-ui-workbench`, `@cumulocity-iot/c8y-ui-apply`) to GitHub Packages under the `latest` dist-tag, all with the same version. `next` publishes prereleases under `next`.
 - semantic-release sets the version in each `packages/*/package.json` only inside the CI run (the repository keeps `0.0.0-development`), then runs `pnpm publish`. It tags `v<version>` and creates a GitHub release whose notes are the changelog. Nothing is committed back.
-- The reusable workflow and the agent pack are versioned by the same tag: `run.yml` installs the packages of the release tag that points to its own commit ([docs/workflow.md](docs/workflow.md#versions)). While the version is 0.x, callers pin an exact tag (`run.yml@v0.7.0`). From 1.0, a release step moves the major tag (`v1`, …) to each new release, and callers reference it (`run.yml@v1`).
+- The reusable workflow and the agent pack are versioned by the same tag: `run.yml` installs the packages of the release tag that points to its own commit ([docs/workflow.md](docs/workflow.md#versions)). While the version is 0.x, callers pin an exact tag (`run.yml@v0.8.0`). From 1.0, a release step moves the major tag (`v1`, …) to each new release, and callers reference it (`run.yml@v1`).
 - Preview locally: `pnpm release:dry-run` (needs the GitHub remote and a `GITHUB_TOKEN` in the environment).
 
 ## Repository setup

@@ -4,6 +4,7 @@ import { mkdirSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { branchName } from './check'
 import type { Comment, GitHub, Issue } from './github'
+import { parseCommand } from './route'
 
 /** Characters of issue.md: the issue and as many of the newest comments as fit. */
 export const CONTEXT_LIMIT = 400_000
@@ -35,6 +36,10 @@ const by = (user: { login: string } | null | undefined, association?: string): s
 
 const labelName = (label: { name?: string } | string): string => typeof label === 'string' ? label : label.name ?? ''
 
+/** Every line of a body as a block quote, so text in it cannot pass for a heading of this file, such as another comment's. */
+export const quote = (text: string | null | undefined): string =>
+  (text?.trim() || '(empty)').split(/\r?\n/).map(line => line ? `> ${line}` : '>').join('\n')
+
 function header(issue: Issue): string {
   const labels = (issue.labels ?? []).map(labelName).filter(Boolean)
   return [
@@ -42,12 +47,12 @@ function header(issue: Issue): string {
     '',
     `${issue.pull_request ? 'Pull request' : 'Issue'}, ${issue.state ?? 'open'}, opened by ${by(issue.user, issue.author_association)}${labels.length > 0 ? `. Labels: ${labels.join(', ')}` : ''}`,
     '',
-    issue.body?.trim() || '(no description)',
+    quote(issue.body),
   ].join('\n')
 }
 
 const section = (comment: Comment): string =>
-  [`## Comment ${comment.id} by ${by(comment.user, comment.author_association)}, ${comment.created_at ?? ''}`.trim(), '', comment.body?.trim() ?? ''].join('\n')
+  [`## Comment ${comment.id} by ${by(comment.user, comment.author_association)}${comment.created_at ? `, ${comment.created_at}` : ''}`, '', quote(comment.body)].join('\n')
 
 /** The thread as Markdown: the issue, then its comments, oldest first; the oldest comments go first when it is too long. */
 export function threadMarkdown(issue: Issue, comments: Comment[], limit = CONTEXT_LIMIT): { text: string, omitted: number } {
@@ -79,12 +84,14 @@ export async function writeContext(options: ContextOptions): Promise<Context> {
   const files = ['issue.md']
   if (options.comment !== undefined) {
     const request = comments.find(c => c.id === options.comment) ?? await github.comment(options.comment)
+    // Only the command line: the rest of the comment can quote anyone, and stays in issue.md with the thread.
+    const command = parseCommand(request.body ?? '')
     writeFileSync(join(options.out, 'request.md'), [
       `# The request`,
       '',
-      `Comment ${request.id} by ${by(request.user, request.author_association)} started this run:`,
+      `${by(request.user, request.author_association)} started this run with comment ${request.id} (in issue.md). The words after the command:`,
       '',
-      request.body?.trim() ?? '',
+      quote(command?.request || '(none)'),
       '',
     ].join('\n'))
     files.push('request.md')

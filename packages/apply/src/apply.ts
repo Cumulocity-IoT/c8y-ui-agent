@@ -152,6 +152,8 @@ export async function apply(options: ApplyOptions): Promise<Applied> {
         '',
         result.summary,
       ].join('\n') + footer(options.runUrl))
+      for (const label of options.removeLabels ?? [])
+        await options.github.removeLabel(options.number, label)
       await options.github.addLabels(options.number, [FAILED_LABEL])
     }
     catch (reportError) {

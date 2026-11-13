@@ -87,6 +87,6 @@ The apply job of [`run.yml`](../.github/workflows/run.yml) runs it ([workflow.md
 - The summary and the pull request body are the model's Markdown: they can mention people. Review and CI stay the gate for the code; the size limits bound the text.
 - The check reads which files changed, not what a lockfile resolves to: a changed lockfile with a changed manifest of its package can still point a dependency at another tarball. Review the lockfile diff of an agent pull request.
 - Commit authors and messages are the agent's: an author can name a maintainer. Only `[skip ci]` and similar directives are rejected.
-- The agent job holds the Actions runtime token of its run, which can upload artifacts and write Actions caches of the default branch. Artifacts from the run are untrusted anyway; workflows with secrets or write tokens must not restore caches that an agent run can write.
+- The agent job holds the Actions runtime token of its run and a read-only job token ([workflow.md](workflow.md), Limits). The runtime token can upload artifacts and write Actions caches of the default branch. Artifacts from the run are untrusted anyway; workflows with secrets or write tokens must not restore caches that an agent run can write.
 - A change to `package.json` scripts or the Cypress configuration passes the check. CI jobs with secrets need an environment with required reviewers for `agent/*` branches (D2).
 - The agent job's network is not restricted yet ([workflow.md](workflow.md), Not yet).

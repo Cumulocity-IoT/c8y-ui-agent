@@ -26,7 +26,7 @@ const USAGE = `Usage:
   c8y-ui-apply playbooks --pack <dir> [--dir <checkout>]
                                              the playbooks the repository can run (docs/pack.md)
   c8y-ui-apply playbook <name> --pack <dir> [--dir <checkout>] [--prompt <file>]
-                                             one playbook; --prompt writes the run's system prompt; exit 1 and step
+                                             one playbook; --prompt writes the run's system prompt; exit 3 and step
                                              output error when the repository cannot run it
   c8y-ui-apply check <options>               check result and bundle in a fresh checkout; no token
   c8y-ui-apply apply <options> --bot-login <login> [--run-url <url>] [--remove-label <label>]…
@@ -215,7 +215,7 @@ async function main(): Promise<number> {
         const message = error.message.replace(/[\r\n]+/g, ' ')
         output('error', message)
         log(message)
-        return 1
+        return 3
       }
       if (values.prompt)
         writeFileSync(resolve(values.prompt), runPrompt(playbook, pack))

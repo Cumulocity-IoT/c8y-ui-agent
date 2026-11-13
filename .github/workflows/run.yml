@@ -25,7 +25,7 @@ on:
         type: number
         default: 10
       timeout-minutes:
-        description: Time limit of the agent job
+        description: Time limit of the agent's step, at most 150; the job has 30 minutes more for installs and the result
         type: number
         default: 60
       package-version:
@@ -52,8 +52,9 @@ jobs:
     # Unrelated comments and labels end here, before a runner starts. route decides the rest.
     if: >-
       github.event_name == 'workflow_dispatch'
-      || (github.event_name == 'issues' && github.event.action == 'labeled' && startsWith(github.event.label.name, 'agent:'))
-      || (github.event_name == 'issue_comment' && github.event.action == 'created' && contains(github.event.comment.body, '@c8y-ui-agent'))
+      || (github.event.sender.type != 'Bot'
+          && ((github.event_name == 'issues' && github.event.action == 'labeled' && startsWith(github.event.label.name, 'agent:'))
+              || (github.event_name == 'issue_comment' && github.event.action == 'created' && contains(github.event.comment.body, '@c8y-ui-agent'))))
     runs-on: ubuntu-latest
     timeout-minutes: 5
     permissions:
@@ -81,7 +82,7 @@ jobs:
             version=$(git ls-remote --tags "$SERVER/$REPOSITORY.git" 'refs/tags/v*' \
               | awk -v sha="$SHA" '$1 == sha { print $2 }' \
               | sed -e 's#^refs/tags/v##' -e 's#\^{}$##' \
-              | grep -E '^[0-9]+\.[0-9]+\.[0-9]+$' | head -n 1 || true)
+              | grep -E '^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$' | head -n 1 || true)
           fi
           if ! printf '%s' "$version" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$'; then
             echo "::error::No release tag v<version> points to $REF ($SHA). Call run.yml at a release tag, or set the input package-version."
@@ -93,6 +94,7 @@ jobs:
           node-version: ${{ env.NODE_VERSION }}
           registry-url: https://npm.pkg.github.com
           scope: '@cumulocity-iot'
+          package-manager-cache: false   # no Actions cache: the agent job could write the caches the others read
       - name: Install c8y-ui-apply
         env:
           NODE_AUTH_TOKEN: ${{ github.token }}
@@ -144,6 +146,7 @@ jobs:
           node-version: ${{ env.NODE_VERSION }}
           registry-url: https://npm.pkg.github.com
           scope: '@cumulocity-iot'
+          package-manager-cache: false   # no Actions cache: the agent job could write the caches the others read
       - name: Install c8y-ui-apply
         env:
           NODE_AUTH_TOKEN: ${{ github.token }}
@@ -154,15 +157,16 @@ jobs:
         run: echo "sha=$(git -C repo rev-parse HEAD)" >> "$GITHUB_OUTPUT"
       - name: Resolve the playbook
         id: playbook
-        # Exit 1 with the step output error: the repository cannot run the playbook; the apply job reports it.
+        # Exit 3 with the step output error: the repository cannot run the playbook; the apply job reports it.
         run: |
           mkdir -p "$RUNNER_TEMP/agent-context"
           code=0
           "$APPLY" playbook "$PLAYBOOK" --pack c8y-ui-agent/pack --dir repo --prompt "$RUNNER_TEMP/agent-context/system.md" > /dev/null || code=$?
-          [ "$code" -le 1 ] || exit "$code"
+          if [ "$code" -eq 3 ] && grep -q '^error=' "$GITHUB_OUTPUT"; then exit 0; fi
+          if [ "$code" -ne 0 ] || ! grep -q '^result=' "$GITHUB_OUTPUT"; then exit "$((code == 0 ? 1 : code))"; fi
+      # Also after a playbook error: the base must match the agent branch, or the apply job rejects the report.
       - name: Write the issue thread
         id: context
-        if: steps.playbook.outputs.error == ''
         env:
           GH_TOKEN: ${{ github.token }}
           COMMENT: ${{ needs.filter.outputs.comment }}
@@ -173,7 +177,7 @@ jobs:
       - uses: actions/upload-artifact@v7
         if: steps.playbook.outputs.error == ''
         with:
-          name: agent-context
+          name: c8y-ui-agent-context
           path: ${{ runner.temp }}/agent-context
           retention-days: 7
 
@@ -181,13 +185,14 @@ jobs:
     needs: [filter, context]
     if: needs.context.outputs.error == ''
     runs-on: ubuntu-latest
-    timeout-minutes: ${{ inputs.timeout-minutes }}
+    # The agent's step has the input's minutes; the job 30 more, so a stopped agent's commits are still bundled.
+    timeout-minutes: 180
     # One run per issue at a time. A newer trigger replaces a pending one; a running one finishes.
     concurrency:
       group: c8y-ui-agent-${{ github.repository }}-${{ needs.context.outputs.number }}
       cancel-in-progress: false
-    # Checkout and package installs only. The agent gets no GitHub token; it can still reach the runner's Actions
-    # runtime token (docs/result.md, Limits).
+    # For checkout and package installs. The agent's step gets no token, but the agent can reach this read-only job
+    # token and the Actions runtime token on its runner (docs/workflow.md, Limits).
     permissions:
       contents: read
       packages: read
@@ -216,13 +221,14 @@ jobs:
           sparse-checkout: pack
       - uses: actions/download-artifact@v8
         with:
-          name: agent-context
+          name: c8y-ui-agent-context
           path: ${{ runner.temp }}/run
       - uses: actions/setup-node@v7
         with:
           node-version: ${{ env.NODE_VERSION }}
           registry-url: https://npm.pkg.github.com
           scope: '@cumulocity-iot'
+          package-manager-cache: false   # no Actions cache: the agent job could write the caches the others read
       - name: Install the repository's dependencies
         working-directory: repo
         env:
@@ -245,7 +251,12 @@ jobs:
           npm install --no-save --no-audit --no-fund --prefix "$RUNNER_TEMP/tools" \
             "@cumulocity-iot/c8y-ui-workbench@$VERSION" "@cumulocity-iot/c8y-ui-apply@$VERSION" \
             "@cumulocity-iot/c8y-web-sdk-knowledge-mcp@$KNOWLEDGE_VERSION" "@anthropic-ai/claude-code@$CLAUDE_CODE_VERSION"
-          echo "$RUNNER_TEMP/tools/node_modules/.bin" >> "$GITHUB_PATH"
+          # Only the tools on the PATH, not their dependencies' binaries (ng, tsc, cypress): the repository's own stay first.
+          mkdir -p "$RUNNER_TEMP/bin"
+          for tool in claude c8y-ui-workbench c8y-ui-apply c8y-web-sdk-knowledge-mcp; do
+            ln -s "$RUNNER_TEMP/tools/node_modules/.bin/$tool" "$RUNNER_TEMP/bin/$tool"
+          done
+          echo "$RUNNER_TEMP/bin" >> "$GITHUB_PATH"
       - name: Prepare the run
         working-directory: repo
         run: |
@@ -256,7 +267,7 @@ jobs:
           mkdir -p "$run/screenshots"
           c8y-ui-workbench profile > "$run/profile.json"
           # The servers' names are part of the pack: the verifier's tool list uses them.
-          RUN="$run" REPO="$PWD" TOOLS="$RUNNER_TEMP/tools/node_modules/.bin" node -e '
+          RUN="$run" REPO="$PWD" TOOLS="$RUNNER_TEMP/bin" node -e '
             const { RUN, REPO, TOOLS } = process.env
             require("node:fs").writeFileSync(`${RUN}/mcp.json`, JSON.stringify({ mcpServers: {
               "c8y-ui-workbench": { command: `${TOOLS}/c8y-ui-workbench`, args: ["--repo", REPO, "--screenshots", `${RUN}/screenshots`] },
@@ -279,7 +290,8 @@ jobs:
           fi
       - name: Run the agent
         id: agent
-        continue-on-error: true   # a failed or stopped agent still reaches the apply job, which reports it
+        timeout-minutes: ${{ inputs.timeout-minutes }}
+        continue-on-error: true   # a failed or stopped agent still reaches the bundle and the apply job
         working-directory: repo
         env:
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
@@ -300,7 +312,9 @@ jobs:
           Base: $BASE
           Run directory: $run
           Rounds: $ROUNDS"
-          claude -p "$task" \
+          # The workflow command files stay out of the agent's environment (it can still find them on the runner).
+          env -u GITHUB_ENV -u GITHUB_OUTPUT -u GITHUB_PATH -u GITHUB_STATE -u GITHUB_STEP_SUMMARY \
+            claude -p "$task" \
             --model "$MODEL" \
             --append-system-prompt-file "$run/system.md" \
             "${plugins[@]}" \
@@ -335,18 +349,21 @@ jobs:
           out="$RUNNER_TEMP/out"
           mkdir -p "$out"
           result="$RUNNER_TEMP/run/result.json"
-          if [ -f "$result" ] && [ ! -L "$result" ]; then cp "$result" "$out/result.json"; fi
-          c8y-ui-apply bundle --base "$BASE" --out "$out/agent.bundle" > /dev/null
           # Not a boundary (the agent controls this runner), but it keeps the model key out of a careless result.
-          if { [ -f "$out/result.json" ] && grep -qF -- "$KEY" "$out/result.json"; } || git log -p "$BASE..HEAD" | grep -F -- "$KEY" > /dev/null; then
-            echo "::error::The result contains the model key: nothing is uploaded."
+          if [ -f "$result" ] && [ ! -L "$result" ]; then
+            if grep -qF -- "$KEY" "$result"; then echo "::error::result.json contains the model key: nothing is uploaded."; exit 1; fi
+            cp "$result" "$out/result.json"
+          fi
+          if git log -p --text --no-ext-diff --no-textconv "$BASE..HEAD" | grep -F -- "$KEY" > /dev/null; then
+            echo "::error::A commit contains the model key: nothing is uploaded."
             rm -rf "$out"
             exit 1
           fi
+          c8y-ui-apply bundle --base "$BASE" --out "$out/agent.bundle" > /dev/null
       - uses: actions/upload-artifact@v7
         if: ${{ !cancelled() }}
         with:
-          name: agent-result
+          name: c8y-ui-agent-result
           path: ${{ runner.temp }}/out
           if-no-files-found: ignore
           retention-days: 30   # a rejected result's commits stay here
@@ -354,7 +371,8 @@ jobs:
   apply:
     needs: [filter, context, agent]
     # Also after a failed or skipped agent job: a missing result.json and a playbook error get a status comment too.
-    if: ${{ !cancelled() && needs.context.result == 'success' }}
+    # Not after an agent job that a newer trigger cancelled while it waited: that run reports instead.
+    if: ${{ !cancelled() && needs.context.result == 'success' && needs.agent.result != 'cancelled' }}
     runs-on: ubuntu-latest
     timeout-minutes: 15
     permissions:
@@ -382,6 +400,7 @@ jobs:
           node-version: ${{ env.NODE_VERSION }}
           registry-url: https://npm.pkg.github.com
           scope: '@cumulocity-iot'
+          package-manager-cache: false   # no Actions cache: the agent job could write the caches the others read
       - name: Install c8y-ui-apply
         env:
           NODE_AUTH_TOKEN: ${{ github.token }}
@@ -391,7 +410,7 @@ jobs:
         if: needs.context.outputs.error == ''
         continue-on-error: true   # no artifact: check reports the missing result.json
         with:
-          name: agent-result
+          name: c8y-ui-agent-result
           path: ${{ runner.temp }}/agent
       - name: Report the playbook error
         if: needs.context.outputs.error != ''

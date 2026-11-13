@@ -19,7 +19,7 @@ export interface RouteEvent {
   action?: string
   sender?: { login?: string, type?: string }
   label?: { name?: string }
-  issue?: { number?: number, pull_request?: unknown }
+  issue?: { number?: number, pull_request?: unknown, user?: { login?: string }, author_association?: string }
   comment?: { id?: number, body?: string, author_association?: string }
   inputs?: Record<string, unknown>
 }
@@ -35,18 +35,24 @@ const skip = (reason: string): Route => ({ run: false, reason })
  * as is, for the caller to reject.
  */
 export function parseCommand(body: string): { name: string, request: string } | undefined {
-  let fence: string | undefined
+  // An open fence: its character and length. CommonMark closes it with the same character, at least as long, and no
+  // info string. Lines indented by four spaces or more are code too.
+  let fence: { char: string, length: number } | undefined
   for (const raw of body.split(/\r?\n/)) {
-    const line = raw.trim()
-    const marker = /^(`{3,}|~{3,})/.exec(line)?.[1]
+    const marker = /^ {0,3}(`{3,}|~{3,})(.*)$/.exec(raw)
     if (marker) {
+      const char = marker[1]![0]!
+      const length = marker[1]!.length
       if (fence === undefined)
-        fence = marker[0]
-      else if (marker[0] === fence)
+        fence = { char, length }
+      else if (char === fence.char && length >= fence.length && marker[2]!.trim() === '')
         fence = undefined
       continue
     }
-    if (fence !== undefined || line.startsWith('>'))
+    if (fence !== undefined || /^( {4}|\t)/.test(raw))
+      continue
+    const line = raw.trim()
+    if (line.startsWith('>'))
       continue
     const match = new RegExp(`^${HANDLE}(?![\\w-])(.*)$`, 'i').exec(line)
     if (!match)
@@ -80,6 +86,11 @@ export function route(eventName: string, event: RouteEvent): Route {
   if (eventName === 'issues') {
     if (event.action !== 'labeled')
       return skip(`issues ${event.action ?? ''}: only labeled starts a run`)
+    // A label from an issue template arrives with the issue: its author is the sender. Only those who may start
+    // runs start one that way.
+    const opener = event.issue?.user?.login
+    if (opener !== undefined && opener === event.sender?.login && !ASSOCIATIONS.includes(event.issue?.author_association ?? 'NONE'))
+      return skip(`the label was added by the issue's author, whose association ${event.issue?.author_association ?? 'NONE'} cannot start a run`)
     const label = event.label?.name ?? ''
     if (!label.startsWith('agent:') || STATE_LABELS.includes(label))
       return skip(`the label ${label} is no playbook label`)
