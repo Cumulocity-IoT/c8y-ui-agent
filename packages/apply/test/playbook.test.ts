@@ -101,8 +101,34 @@ describe('playbooks', () => {
     })
     symlinkSync(join(dir, 'outside.md'), join(dir, '.c8y-agent/playbooks/linked.md'))
     const { playbooks, errors } = listPlaybooks({ pack: pack(), dir })
-    expect(playbooks.map(p => p.name)).toEqual(['fix', 'same', 'triage'])
-    expect(errors).toEqual(['.c8y-agent/playbooks/b.md: the playbook same is already defined in .c8y-agent/playbooks/a.md'])
+    expect(playbooks.map(p => p.name)).toEqual(['fix', 'triage'])
+    expect(errors).toEqual(['.c8y-agent/playbooks/a.md, .c8y-agent/playbooks/b.md: each defines the playbook same; keep one'])
+    expect(() => resolvePlaybook('same', { pack: pack(), dir })).toThrow(/each defines the playbook same/)
+  })
+
+  it('does not run a built-in without the repository\'s rules when its extension is broken', () => {
+    const p = pack()
+    const typo = tree({ '.c8y-agent/playbooks/fix.md': '---\nextends: builtin\nevidense: static\n---\n- Rules.' })
+    expect(listPlaybooks({ pack: p, dir: typo }).playbooks.find(x => x.name === 'fix')!.source).toBe('builtin')
+    expect(() => resolvePlaybook('fix', { pack: p, dir: typo })).toThrow(/unknown field "evidense"/)
+    const twice = tree({
+      '.c8y-agent/playbooks/a.md': '---\nname: fix\nextends: builtin\n---\nA rules.',
+      '.c8y-agent/playbooks/fix.md': '---\nextends: builtin\nevidence: static\n---\nB rules.',
+    })
+    expect(() => resolvePlaybook('fix', { pack: p, dir: twice })).toThrow(/a\.md, .*fix\.md: each defines the playbook fix/)
+    const renamed = tree({ '.c8y-agent/playbooks/custom.md': '---\nname: deploy\ndescription: Deploy.\nevidence: strong\n---\nSteps.' })
+    expect(() => resolvePlaybook('deploy', { pack: p, dir: renamed })).toThrow(/custom\.md: evidence must be one of/)
+  })
+
+  it('reads frontmatter after a byte order mark, and empty frontmatter', () => {
+    const dir = tree({
+      '.c8y-agent/playbooks/bom.md': '\uFEFF---\ndescription: With a BOM.\n---\nSteps.',
+      '.c8y-agent/playbooks/fix.md': '---\n---\nNo fields.',
+    })
+    const { playbooks, errors } = listPlaybooks({ pack: pack(), dir })
+    expect(playbooks.find(x => x.name === 'bom')!.description).toBe('With a BOM.')
+    expect(errors).toEqual(['.c8y-agent/playbooks/fix.md: fix is a built-in playbook; set extends: builtin to add rules to it (replacing a built-in is not supported yet)'])
+    expect(() => resolvePlaybook('fix', { pack: pack(), dir })).toThrow(/set extends: builtin/)
   })
 
   it('fails on an invalid config.yml, a playbooks entry that is not a switch, an unknown name, and a missing pack', () => {

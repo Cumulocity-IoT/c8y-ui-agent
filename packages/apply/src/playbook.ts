@@ -2,7 +2,7 @@
 // resolves them in its trusted jobs. A playbook's evidence level and result decide what the apply job accepts, so they
 // come from here, never from the agent's files. See docs/pack.md.
 import { existsSync, lstatSync, readdirSync, readFileSync } from 'node:fs'
-import { join } from 'node:path'
+import { basename, join } from 'node:path'
 import { parse as parseYaml } from 'yaml'
 import { PLAYBOOK, UsageError } from './check'
 
@@ -44,37 +44,56 @@ export interface PlaybookOptions {
 }
 
 interface Parsed {
-  file: string
+  label: string
+  /** The `name` field, else the file name; undefined when neither is a playbook name. */
   name?: string
   fields: { description?: string, extends?: 'builtin', evidence?: Evidence, result?: PlaybookResult }
   body: string
+  /** Every problem of the file; a file with errors is not used. */
+  errors: string[]
 }
 
-/** A playbook file: optional YAML frontmatter, then the Markdown body. Throws with every problem of the file. */
-function parsePlaybook(file: string, label: string): Parsed {
+const FRONTMATTER = /^---[ \t]*\r?\n(?:([\s\S]*?)\r?\n)?---[ \t]*(?:\r?\n|$)([\s\S]*)$/
+
+/** A playbook file: optional YAML frontmatter, then the Markdown body, with every problem of the file. */
+function parsePlaybook(path: string, label: string): Parsed {
   const errors: string[] = []
-  const size = lstatSync(file).size
+  const stem = basename(path).replace(/\.md$/, '')
+  const fallbackName = PLAYBOOK.test(stem) ? stem : undefined
+  const size = lstatSync(path).size
   if (size > PLAYBOOK_LIMITS.fileBytes)
-    throw new UsageError(`${label}: ${size} bytes, at most ${PLAYBOOK_LIMITS.fileBytes}`)
-  const source = readFileSync(file, 'utf8')
-  const match = /^---\r?\n([\s\S]*?)\r?\n---[ \t]*(?:\r?\n|$)([\s\S]*)$/.exec(source)
+    return { label, name: fallbackName, fields: {}, body: '', errors: [`${label}: ${size} bytes, at most ${PLAYBOOK_LIMITS.fileBytes}`] }
+  const source = readFileSync(path, 'utf8').replace(/^\uFEFF/, '')
+  const match = FRONTMATTER.exec(source)
   let data: unknown = {}
   if (match) {
     try {
-      data = parseYaml(match[1]!) ?? {}
+      data = parseYaml(match[1] ?? '') ?? {}
     }
     catch (error) {
-      throw new UsageError(`${label}: the frontmatter is not valid YAML: ${(error as Error).message.split('\n')[0]}`)
+      errors.push(`${label}: the frontmatter is not valid YAML: ${(error as Error).message.split('\n')[0]}`)
     }
   }
-  if (typeof data !== 'object' || data === null || Array.isArray(data))
-    throw new UsageError(`${label}: the frontmatter must be a map of fields`)
+  if (typeof data !== 'object' || data === null || Array.isArray(data)) {
+    errors.push(`${label}: the frontmatter must be a map of fields`)
+    data = {}
+  }
   const value = data as Record<string, unknown>
   for (const key of Object.keys(value)) {
     if (key === 'models')
       errors.push(`${label}: models is not supported yet`)
     else if (!FIELDS.includes(key))
       errors.push(`${label}: unknown field ${JSON.stringify(key)} (${FIELDS.join(', ')})`)
+  }
+  let name = fallbackName
+  if (value.name !== undefined) {
+    if (typeof value.name !== 'string' || !PLAYBOOK.test(value.name))
+      errors.push(`${label}: name must be a lowercase name (letters, digits, hyphens), not ${JSON.stringify(value.name)}`)
+    else
+      name = value.name
+  }
+  else if (!fallbackName) {
+    errors.push(`${label}: the file name is not a playbook name (lowercase letters, digits, hyphens); set name`)
   }
   const fields: Parsed['fields'] = {}
   if (value.description !== undefined) {
@@ -85,8 +104,6 @@ function parsePlaybook(file: string, label: string): Parsed {
     else
       fields.description = value.description.trim()
   }
-  if (value.name !== undefined && (typeof value.name !== 'string' || !PLAYBOOK.test(value.name)))
-    errors.push(`${label}: name must be a lowercase name (letters, digits, hyphens), not ${JSON.stringify(value.name)}`)
   if (value.extends !== undefined) {
     if (value.extends !== 'builtin')
       errors.push(`${label}: extends must be builtin`)
@@ -110,9 +127,7 @@ function parsePlaybook(file: string, label: string): Parsed {
   const body = (match ? match[2]! : source).trim()
   if (body === '')
     errors.push(`${label}: the playbook has no instructions`)
-  if (errors.length > 0)
-    throw new UsageError(errors.join('\n'))
-  return { file, name: typeof value.name === 'string' ? value.name : undefined, fields, body }
+  return { label, name, fields, body, errors }
 }
 
 /** Regular `.md` files of a directory, sorted; symbolic links are not followed. */
@@ -122,23 +137,16 @@ function markdownFiles(dir: string): string[] {
   return readdirSync(dir).filter(file => file.endsWith('.md') && lstatSync(join(dir, file)).isFile()).sort()
 }
 
-function nameOf(parsed: Parsed, file: string, label: string): string {
-  const name = parsed.name ?? file.replace(/\.md$/, '')
-  if (!PLAYBOOK.test(name))
-    throw new UsageError(`${label}: the file name is not a playbook name (lowercase letters, digits, hyphens); set name`)
-  return name
-}
-
 function builtins(pack: string): Map<string, Playbook> {
   const playbooks = new Map<string, Playbook>()
   for (const file of markdownFiles(join(pack, 'playbooks'))) {
-    const label = `pack playbooks/${file}`
-    const parsed = parsePlaybook(join(pack, 'playbooks', file), label)
-    const name = nameOf(parsed, file, label)
+    const parsed = parsePlaybook(join(pack, 'playbooks', file), `pack playbooks/${file}`)
+    if (parsed.errors.length > 0)
+      throw new UsageError(parsed.errors.join('\n'))
     const { description, evidence, result } = parsed.fields
-    if (!description || !evidence || !result || parsed.fields.extends)
-      throw new UsageError(`${label}: a built-in playbook sets description, evidence, and result, and no extends`)
-    playbooks.set(name, { name, description, evidence, result, source: 'builtin', body: parsed.body })
+    if (!parsed.name || !description || !evidence || !result || parsed.fields.extends)
+      throw new UsageError(`${parsed.label}: a built-in playbook sets description, evidence, and result, and no extends`)
+    playbooks.set(parsed.name, { name: parsed.name, description, evidence, result, source: 'builtin', body: parsed.body })
   }
   if (playbooks.size === 0)
     throw new UsageError(`${pack} has no playbooks/: not an agent pack`)
@@ -146,7 +154,7 @@ function builtins(pack: string): Map<string, Playbook> {
 }
 
 /** `playbooks` of `.c8y-agent/config.yml`: playbook names switched off. An invalid file is an error. */
-function disabled(dir: string): Map<string, boolean> {
+function switches(dir: string): Map<string, boolean> {
   const file = join(dir, CONFIG_FILE)
   if (!existsSync(file))
     return new Map()
@@ -173,60 +181,69 @@ export interface PlaybookList {
   errors: string[]
 }
 
-/**
- * Every playbook the repository can run: the pack's built-ins, extended or added to by `.c8y-agent/playbooks/`, without
- * those `config.yml` switches off. A repository file with errors is left out and named in `errors`; the pack's own
- * playbooks and an invalid `config.yml` throw.
- */
-export function listPlaybooks(options: PlaybookOptions): PlaybookList {
+interface Collected extends PlaybookList {
+  /** The errors of the repository files that define each name. */
+  byName: Map<string, string[]>
+}
+
+function collect(options: PlaybookOptions): Collected {
   const playbooks = builtins(options.pack)
-  const builtinNames = new Set(playbooks.keys())
   const errors: string[] = []
-  const seen = new Map<string, string>()
-  for (const file of markdownFiles(join(options.dir, PLAYBOOKS_DIR))) {
-    const label = `${PLAYBOOKS_DIR}/${file}`
-    try {
-      const parsed = parsePlaybook(join(options.dir, PLAYBOOKS_DIR, file), label)
-      const name = nameOf(parsed, file, label)
-      if (seen.has(name))
-        throw new UsageError(`${label}: the playbook ${name} is already defined in ${seen.get(name)}`)
-      seen.set(name, label)
-      const builtin = builtinNames.has(name) ? playbooks.get(name) : undefined
-      if (builtin && !parsed.fields.extends)
-        throw new UsageError(`${label}: ${name} is a built-in playbook; set extends: builtin to add rules to it (replacing a built-in is not supported yet)`)
-      if (!builtin && parsed.fields.extends)
-        throw new UsageError(`${label}: extends: builtin, but there is no built-in playbook ${name}`)
-      if (builtin) {
-        playbooks.set(name, {
-          ...builtin,
-          ...parsed.fields,
-          name,
-          source: 'extended',
-          body: `${builtin.body}\n\n## Repository rules\n\nThe repository adds these rules (${label}):\n\n${parsed.body}`,
-        })
-      }
-      else {
-        if (!parsed.fields.description)
-          throw new UsageError(`${label}: description is required`)
-        playbooks.set(name, {
-          name,
-          description: parsed.fields.description,
-          evidence: parsed.fields.evidence ?? 'observed',
-          result: parsed.fields.result ?? 'pull-request',
-          source: 'repository',
-          body: parsed.body,
-        })
-      }
+  const byName = new Map<string, string[]>()
+  const fail = (name: string | undefined, messages: string[]): void => {
+    errors.push(...messages)
+    if (name)
+      byName.set(name, [...(byName.get(name) ?? []), ...messages])
+  }
+  const files = markdownFiles(join(options.dir, PLAYBOOKS_DIR)).map(file => parsePlaybook(join(options.dir, PLAYBOOKS_DIR, file), `${PLAYBOOKS_DIR}/${file}`))
+  const defined = new Map<string, Parsed[]>()
+  for (const parsed of files) {
+    if (parsed.name)
+      defined.set(parsed.name, [...(defined.get(parsed.name) ?? []), parsed])
+    else
+      fail(undefined, parsed.errors)
+  }
+  for (const [name, parsedFiles] of defined) {
+    if (parsedFiles.length > 1) {
+      fail(name, [`${parsedFiles.map(p => p.label).join(', ')}: each defines the playbook ${name}; keep one`])
+      continue
     }
-    catch (error) {
-      if (!(error instanceof UsageError))
-        throw error
-      errors.push(...error.message.split('\n'))
+    const parsed = parsedFiles[0]!
+    const builtin = playbooks.get(name)
+    const problems = [...parsed.errors]
+    if (builtin && !parsed.fields.extends)
+      problems.push(`${parsed.label}: ${name} is a built-in playbook; set extends: builtin to add rules to it (replacing a built-in is not supported yet)`)
+    if (!builtin && parsed.fields.extends)
+      problems.push(`${parsed.label}: extends: builtin, but there is no built-in playbook ${name}`)
+    if (!builtin && !parsed.fields.extends && !parsed.fields.description && parsed.errors.length === 0)
+      problems.push(`${parsed.label}: description is required`)
+    if (problems.length > 0) {
+      fail(name, problems)
+      continue
+    }
+    if (builtin) {
+      playbooks.set(name, {
+        ...builtin,
+        ...parsed.fields,
+        name,
+        source: 'extended',
+        body: `${builtin.body}\n\n## Repository rules\n\nThe repository adds these rules (${parsed.label}):\n\n${parsed.body}`,
+      })
+    }
+    else {
+      playbooks.set(name, {
+        name,
+        description: parsed.fields.description!,
+        evidence: parsed.fields.evidence ?? 'observed',
+        result: parsed.fields.result ?? 'pull-request',
+        source: 'repository',
+        body: parsed.body,
+      })
     }
   }
   const off: string[] = []
-  for (const [name, on] of disabled(options.dir)) {
-    if (!playbooks.has(name) && !seen.has(name)) {
+  for (const [name, on] of switches(options.dir)) {
+    if (!playbooks.has(name) && !defined.has(name)) {
       errors.push(`playbooks.${name} in ${CONFIG_FILE}: there is no playbook ${name}`)
     }
     else if (!on) {
@@ -234,22 +251,35 @@ export function listPlaybooks(options: PlaybookOptions): PlaybookList {
       off.push(name)
     }
   }
-  return { playbooks: [...playbooks.values()].sort((a, b) => a.name.localeCompare(b.name)), disabled: off.sort(), errors }
+  return { playbooks: [...playbooks.values()].sort((a, b) => a.name.localeCompare(b.name)), disabled: off.sort(), errors, byName }
 }
 
-/** One playbook by name. Throws when it does not exist, is switched off, or its repository file has errors. */
+/**
+ * Every playbook the repository can run: the pack's built-ins, extended or added to by `.c8y-agent/playbooks/`, without
+ * those `config.yml` switches off. A repository file with errors is not used and is named in `errors`; a built-in it
+ * would extend stays as it is. The pack's own playbooks and an invalid `config.yml` throw.
+ */
+export function listPlaybooks(options: PlaybookOptions): PlaybookList {
+  const { byName: _byName, ...list } = collect(options)
+  return list
+}
+
+/**
+ * One playbook by name. Throws when it does not exist, is switched off, or a repository file that defines it has
+ * errors: a built-in whose extension is broken does not run without the repository's rules.
+ */
 export function resolvePlaybook(name: string, options: PlaybookOptions): Playbook {
   if (!PLAYBOOK.test(name))
     throw new UsageError(`the playbook must be a lowercase name, not ${JSON.stringify(name)}`)
-  const { playbooks, disabled: off, errors } = listPlaybooks(options)
+  const { playbooks, disabled: off, byName } = collect(options)
+  if (off.includes(name))
+    throw new UsageError(`the playbook ${name} is switched off in ${CONFIG_FILE}`)
+  const problems = byName.get(name)
+  if (problems)
+    throw new UsageError(problems.join('\n'))
   const playbook = playbooks.find(p => p.name === name)
   if (playbook)
     return playbook
-  if (off.includes(name))
-    throw new UsageError(`the playbook ${name} is switched off in ${CONFIG_FILE}`)
-  const own = errors.filter(error => error.startsWith(`${PLAYBOOKS_DIR}/${name}.md:`) || error.includes(`playbook ${name} `))
-  if (own.length > 0)
-    throw new UsageError(own.join('\n'))
   throw new UsageError(`no playbook ${name}; available: ${playbooks.map(p => p.name).join(', ') || 'none'}`)
 }
 

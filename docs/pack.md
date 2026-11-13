@@ -51,11 +51,13 @@ The orchestrator runs `prove_regression` itself and gives the verifier the base 
 
 `hooks/guard.mjs` runs before every `Bash`, `Edit`, `Write`, `MultiEdit`, and `NotebookEdit` call and denies, with the reason for the agent:
 
-- `git push`, changes to git remotes, `git pull`, `git merge`, and the GitHub CLI `gh`: the apply job writes to GitHub, and rejects merge commits.
-- `git add -A`, `git add .`, `git add --all`, `git add :/`: builds and previews leave output in the checkout (`dist/`), so the agent stages files by name.
-- Edits of `.github/` and `.c8y-agent/` at the root, and of agent instructions at any depth (`.claude/`, `AGENTS.md`, `CLAUDE.md`, `CLAUDE.local.md`, `.mcp.json`), case-insensitive: the apply job rejects a result that changes them. Files outside the checkout, such as `result.json`, are allowed.
+- `git push`, changes to git remotes (`git remote add|set-url|…`, `git config remote.*`, `git config url.*`), `git pull`, `git merge`, and the GitHub CLI `gh`: the apply job writes to GitHub, and rejects merge commits.
+- `git add` or `git stage` with `-A`, `.`, `--all`, `:/`, or `*`: builds and previews leave output in the checkout (`dist/`), so the agent stages files by name.
+- Edits of `.github/` and `.c8y-agent/` at the checkout's root, and of agent instructions at any depth (`.claude/`, `AGENTS.md`, `CLAUDE.md`, `CLAUDE.local.md`, `.mcp.json`), case-insensitive. The root is Claude Code's project directory (`CLAUDE_PROJECT_DIR`), whatever directory the agent is in. Files outside the checkout, such as `result.json`, are allowed.
 
-The guard reads shell commands word by word, split at `;`, `&&`, `||`, `|`, and subshells, after variable assignments and wrappers (`env`, `sudo`). It prevents mistakes that would cost the run; it is not a security boundary. The agent can reach the same effects another way (a script, an alias), and the security model does not depend on it: the agent job holds no credential, and the apply job checks every result (D2).
+These are some of the changes the apply job rejects, not all: it also checks `.npmrc`, lockfiles, the `protect` list, and more ([result.md](result.md)).
+
+The guard splits a shell command line into simple commands at `;`, `&`, `&&`, `|`, `||`, newlines, parentheses, backticks, and `$(`, outside quotes, and skips here-documents, so a commit message that mentions `git push` is not a command. It reads past variable assignments and wrappers with their options (`env`, `sudo`, `timeout`, `nice`, `xargs`, …). It prevents mistakes that would cost the run; it is not a security boundary. The agent can reach the same effects another way (a script, an alias), and the security model does not depend on it: the agent job holds no credential, and the apply job checks every result (D2).
 
 ## A run
 

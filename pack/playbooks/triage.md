@@ -13,7 +13,7 @@ Outcomes: `comment`, or `failed`. Triage makes no commits and leaves the checkou
    - Try the variations the issue leaves open (data, viewport, sequence of actions), at most five, and note each one.
    - A gap in a screenshot or run means the emulator does not answer a request the app makes. Report the gap instead of "cannot reproduce".
 4. **Find the cause** of a reproduced bug in the code, as far as you can without changing it: the file and line, and why. Do not fix it.
-5. **Result.** `git status` must show no changes. Write `result.json` with outcome `comment`. The summary has:
+5. **Result.** `git status` shows no change to tracked files and no file you created; build output the tools leave (`dist/`) stays. Write `result.json` with outcome `comment`. The summary has:
    - what the issue is (bug, feature request, question, duplicate of #n) and the affected app;
    - for a bug: the steps you ran, what you saw, and whether it reproduced; the cause if you found it;
    - what is missing to go on, as concrete questions: versions, steps, data, a screenshot;

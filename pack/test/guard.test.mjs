@@ -58,6 +58,42 @@ describe('guard', () => {
       expect(edit(file, 'Write'), file).toBeUndefined()
   })
 
+  it('catches aliases, wrappers with options, background jobs, and remote changes through git config', () => {
+    for (const command of [
+      'git stage -A',
+      'git stage .',
+      'timeout 120 git push',
+      'timeout -s KILL 5m git push',
+      'npm run build & git add -A',
+      'env -u FOO git push',
+      'xargs -I {} git push',
+      'git config remote.origin.url https://example.com/x.git',
+      'git config --add url.https://x/.insteadOf origin',
+    ])
+      expect(bash(command), command).toBeTypeOf('string')
+    expect(bash('git config --get remote.origin.url')).toBeUndefined()
+  })
+
+  it('does not take quoted text, here-documents, or lookups for commands', () => {
+    for (const command of [
+      'grep -rnE "foo|gh api" src',
+      'command -v gh',
+      'git commit -m "docs: do not git push (#1)"',
+      'git commit -F - <<\'EOF\'\nfix(kpi): x (#1)\n\nDo not call `git pull` in setup; ok | gh api\nEOF',
+      'cat <<-EOF > notes.md\n\tgit push\n\tEOF\ngit status',
+    ])
+      expect(bash(command), command).toBeUndefined()
+    expect(bash('cat <<EOF\ntext\nEOF\ngit push')).toBeTypeOf('string')
+  })
+
+  it('checks protected paths against the checkout root, not the agent\'s directory', () => {
+    const at = (file_path, cwd) => decide({ tool_name: 'Write', tool_input: { file_path }, cwd }, '/repo')
+    expect(at('/repo/.github/workflows/ci.yml', '/repo/apps/cockpit')).toMatch(/is protected/)
+    expect(at('/repo/.c8y-agent/config.yml', '/repo/apps/cockpit')).toMatch(/is protected/)
+    expect(at('/repo/apps/cockpit/.github/x.yml', '/repo/apps/cockpit')).toBeUndefined()
+    expect(at('/repo/apps/cockpit/CLAUDE.md', '/repo/apps/cockpit')).toMatch(/is protected/)
+  })
+
   it('leaves other tools and malformed events to the permission rules', () => {
     expect(decide({ tool_name: 'Read', tool_input: { file_path: '.github/x' } })).toBeUndefined()
     expect(decide(undefined)).toBeUndefined()
@@ -74,5 +110,11 @@ describe('guard', () => {
     expect(allowed.status).toBe(0)
     expect(allowed.stdout).toBe('')
     expect(spawnSync(process.execPath, [script], { input: 'not json', encoding: 'utf8' }).stdout).toBe('')
+    const nested = spawnSync(process.execPath, [script], {
+      input: JSON.stringify({ hook_event_name: 'PreToolUse', tool_name: 'Write', tool_input: { file_path: '/repo/.github/x.yml' }, cwd: '/repo/apps/a' }),
+      encoding: 'utf8',
+      env: { ...process.env, CLAUDE_PROJECT_DIR: '/repo' },
+    })
+    expect(JSON.parse(nested.stdout).hookSpecificOutput.permissionDecision).toBe('deny')
   })
 })

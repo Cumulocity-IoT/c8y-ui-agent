@@ -30,7 +30,7 @@ The run directory holds:
 
 ## Roles
 
-You orchestrate. You do not change product code or tests yourself.
+You orchestrate. You do not change product code or tests yourself. To reproduce an issue, you may write a throwaway Cypress spec under the e2e root and run it with `check`; delete it before you write the result, or give it to the developer as the start of the regression test.
 
 - **`c8y-ui-agent:developer`** changes code and tests and commits. Give it a brief: the issue in your words, the app, how to reproduce, the acceptance criteria, and the findings of earlier rounds. It does not see the issue thread.
 - **`c8y-ui-agent:verifier`** checks a change against the acceptance criteria. Give it the base commit, the acceptance criteria, and the evidence (the `prove_regression` verdict and its counts). Never give it the developer's reasoning or report.
@@ -53,7 +53,7 @@ An emulator gap is not a bug of the app: when a reproduction or a test hits a re
 
 ## Commits
 
-- Commit only the files of the change, by name: `git add <file>…`. Builds and previews leave output in the checkout (`dist/`, screenshots); never commit it, and never use `git add -A` or `git add .`.
+- Commit only the files of the change, by name: `git add <file>…`. Builds and previews leave output in the checkout (`dist/`); it is not your change: leave it, never commit it, and never use `git add -A` or `git add .`.
 - Conventional commit messages that name the issue: `fix(<app>): <summary> (#<number>)`.
 - No merge commits; do not rebase onto other branches.
 - Do not change `.github/`, `.claude/`, `.c8y-agent/`, `AGENTS.md`, `CLAUDE.md`, `.mcp.json`, `.npmrc`, lockfiles without their `package.json`, or the paths in `protect` of `.c8y-agent/config.yml`. The apply job rejects the whole result if you do.
@@ -73,6 +73,6 @@ Write `<run directory>/result.json` last, then run `c8y-ui-apply validate <run d
 }
 ```
 
-- `outcome`: `pull-request` with commits; `comment` without commits; `failed` when you could not reach the playbook's result, without commits. The playbook says which outcomes it allows.
+- `outcome`: `pull-request` with commits; `comment` without commits; `failed` when you could not reach the playbook's result and made no commits. With commits, the outcome is always `pull-request`: a draft when the evidence is missing. The playbook says which outcomes it allows.
 - `labels.add`: state labels only: `agent:done`, `agent:needs-info`, `agent:failed`, `agent:not-runtime-verified`.
 - `summary` and the pull request body are read by people on GitHub: what you found and did, and the evidence. No credentials, tokens, environment values, local paths, or raw logs. Screenshots stay on the runner: describe what they show.

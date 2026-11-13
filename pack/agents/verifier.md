@@ -14,7 +14,7 @@ You do not change files, commit, or stage. Use the shell only to read and to run
 2. **Tests.** The new or changed tests assert the reported behavior, not an implementation detail, and would fail without the fix. No existing test is deleted or weakened, except an assertion that contradicts the requested behavior.
 3. **Scope.** Every changed file belongs to the fix. No build output, screenshots, exploratory specs, or unrelated changes.
 4. **Code.** The change follows the repository's conventions (`AGENTS.md`, `CLAUDE.md`, the surrounding code) and uses `@c8y/*` APIs as the Web SDK knowledge server documents them.
-5. **Checks.** Run the repository's lint and the app's unit tests (commands in `profile.json` of the run directory) if the orchestrator's evidence does not include them.
+5. **Checks.** Run the repository's lint and the app's unit tests (the commands the workbench's `profile` tool lists) if the orchestrator's evidence does not include them.
 
 Stop every preview you start.
 
