@@ -130,3 +130,18 @@ Rejected:
 - Validating in the agent job: the agent can change its runner, so a check there proves nothing. The agent runs `c8y-ui-apply validate` only to find its own mistakes early.
 
 Decided on 2026-11-09.
+
+## D17: Discovery lives in the workbench and reads installed versions
+
+Discovery runs in the agent job after the install, next to the workbench, which is its first user: the workbench's settings (e2e root, per-app Cypress config, login mode, world) come from the profile instead of command-line options. `c8y-ui-workbench profile` and the MCP tool `profile` give it to the workflow and the agent.
+
+- **Order:** an explicit option wins, then `.c8y-agent/config.yml`, then detection. The workbench reads only its own keys of `config.yml` (`world.file`, `e2e`, `commands`, `projects.<app>.commands`) and leaves the others to the components that use them; an invalid file is an error.
+- **`e2e` and `commands` in config.yml:** the specification corrects commands under `projects` only. The workbench also needs the e2e setup, and a repository needs to correct its lint and test commands, so both are added.
+- **Versions from the install:** the Web SDK and Angular versions are those Node resolves from the repository and the app folders, not parsed from the four lockfile formats. The profile is taken after the install, so the result is the same; without an install, they are unknown.
+- **No guessed Cypress environment:** a Cypress config that reads the app's URL from its own variable needs `e2e.env` in `config.yml`. Reading variable names out of Cypress configs would be a guess.
+
+Not yet detected, from the specification's table: the test stack beyond Cypress, CI workflows, changelogs. They come when a playbook needs them.
+
+Rejected: a separate discovery package, which the agent job would install next to the workbench for the same data; discovery in the filter or context job, before the install, without installed versions.
+
+Decided on 2026-11-13.

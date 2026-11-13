@@ -9,6 +9,7 @@ Requires Node 22.13 or later, a repository with its dependencies installed (pnpm
 | Tool | Input | Result |
 |---|---|---|
 | `list_apps` | none | The apps: Angular projects with a serve target, by folder name, or the repository itself |
+| `profile` | none | The repository profile from discovery: package manager, Node, Web SDK and Angular versions, each app's package scripts, the repository's lint and test commands, the e2e setup, the world file, instruction files and skills, and what discovery could not settle; with the settings `preview_up`, `check` and `prove_regression` use ([docs/discovery.md](https://github.com/Cumulocity-IoT/c8y-ui-agent/blob/main/docs/discovery.md)) |
 | `preview_up` | `app` | `id` and `url`: the shell with the app's dev build (`ng serve`) on the emulated tenant, no login needed. 1 to 3 minutes. |
 | `preview_log` | `id`, `lines` | The dev server's last output lines, e.g. build errors after a change |
 | `preview_down` | `id` (optional) | Stops one preview, or all |
@@ -18,32 +19,32 @@ Requires Node 22.13 or later, a repository with its dependencies installed (pnpm
 
 ## Configuration
 
-The server takes the repository's settings as options. Discovery will fill them in later versions.
+Discovery reads the settings from the repository: the Cypress project, its per-app config files, and the UI SDK project file `c8y-ui.json` with the login mode and the world ([docs/discovery.md](https://github.com/Cumulocity-IoT/c8y-ui-agent/blob/main/docs/discovery.md)). `.c8y-agent/config.yml` corrects them, and these options win over both:
 
 | Option | Meaning |
 |---|---|
 | `--repo <dir>` | The repository (default: the working directory) |
-| `--world <file>` | World file the emulator serves, relative to the repository or absolute; required |
+| `--world <file>` | World file the emulator serves, relative to the repository or absolute. Previews, checks and proofs need one. |
 | `--e2e-root <dir>` | Cypress project directory, relative to the repository. Files under it are tests; everything else is the product change. |
-| `--e2e-config <file>` | Cypress config file, relative to the e2e root; `{app}` is replaced by the app name |
-| `--e2e-auth <mode>` | Emulator login mode in e2e runs: `open` (default) or `login` |
-| `--e2e-env <K=V>` | More Cypress environment, repeatable; `{devUrl}` and `{mockUrl}` are replaced with the run's URLs |
+| `--e2e-config <file>` | Cypress config file, relative to the e2e root; `{app}` is replaced by the app name. Applies to every app; a detected pattern applies only to the apps whose file exists. |
+| `--e2e-auth <mode>` | Emulator login mode in e2e runs: `open` (default without a `c8y-ui.json`) or `login` |
+| `--e2e-env <K=V>` | More Cypress environment, repeatable, added to `e2e.env` of `config.yml`; `{devUrl}` and `{mockUrl}` are replaced with the run's URLs |
 | `--screenshots <dir>` | Directory for screenshots (default: a new private directory in the temp directory per run). Keep it out of the working tree or ignore it in git: `prove_regression` counts untracked files as part of the change. |
 
 The world file must exist before a preview or a proof starts. `c8y-ui create` and `c8y-ui init` of the UI SDK add `mock/world.json`. Otherwise create one with `c8y-ui world pull` (part of a real tenant, through the active go-c8y-cli session) or `c8y-ui world export` (a running mock's state), or copy the SDK's template world (`node_modules/@cumulocity-iot/ui-sdk/templates/app/mock/world.json`). A repository that does not commit its world file pulls it first, e.g. with a package script.
 
-Claude Code, for an app set up with `c8y-ui create` or `c8y-ui init` (world in `mock/`, Cypress at the repository root):
+Claude Code, in a repository that discovery reads completely (check with `c8y-ui-workbench profile`):
 
 ```sh
-claude mcp add c8y-ui-workbench -- npx -y @cumulocity-iot/c8y-ui-workbench --world mock/world.json
+claude mcp add c8y-ui-workbench -- npx -y @cumulocity-iot/c8y-ui-workbench
 ```
 
-For an Angular workspace with several plugins, its Cypress project in `test/` and one Cypress config per plugin, which logs in and reads the app's URL from `C8Y_CYPRESS_URL`:
+An Angular workspace with several plugins, its Cypress project in `test/` with one config per plugin, and a Cypress config that reads the app's URL from `C8Y_CYPRESS_URL` needs only that variable in `.c8y-agent/config.yml`:
 
-```sh
-claude mcp add c8y-ui-workbench -- npx -y @cumulocity-iot/c8y-ui-workbench \
-  --world mock/world.json --e2e-root test --e2e-config 'config/{app}.config.ts' \
-  --e2e-auth login --e2e-env 'C8Y_CYPRESS_URL={devUrl}'
+```yaml
+e2e:
+  env:
+    C8Y_CYPRESS_URL: "{devUrl}"
 ```
 
 ## From a shell
@@ -51,6 +52,7 @@ claude mcp add c8y-ui-workbench -- npx -y @cumulocity-iot/c8y-ui-workbench \
 The same operations, with the same options:
 
 ```sh
+c8y-ui-workbench profile
 c8y-ui-workbench apps
 c8y-ui-workbench preview <app>                        # until Ctrl+C
 c8y-ui-workbench screenshot <app> [--path <route>] [--wait-for <css>] [--selector <css>] [--full-page] [--out <file>]
