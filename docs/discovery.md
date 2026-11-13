@@ -10,16 +10,16 @@ Discovery reads a repository and writes its profile: plain code over the reposit
 | `node` | `.nvmrc`, `.node-version`, then `engines.node` in `package.json`, with the file it came from |
 | `versions.webSdk`, `versions.angular` | The installed `@c8y/ngx-components` and `@angular/core`, resolved from the repository and the app folders as Node resolves them. Without an install: unknown. |
 | `apps` | The workbench's apps: Angular projects with a serve target, by folder name, or the repository itself. Each with its context path (`cumulocity.config.ts`, through the UI SDK's `detectConfig`), its package scripts, and its Cypress config file. |
-| `apps[].commands` | Scripts named `<verb>:<name>`, where the name is the app's folder name or Angular project: `test:kpi-widget` gives `test`, `e2e:run:kpi-widget` gives `e2e:run`. Scripts whose verb contains `watch`, `open`, `dev`, `start`, or `serve` are left out: they do not end, and `preview_up` serves an app. |
+| `apps[].commands` | Scripts named `<verb>:<name>`, where the name is the app's folder name or Angular project: `test:kpi-widget` gives `test`, `e2e:run:kpi-widget` gives `e2e:run`. Scripts with `watch`, `open`, `dev`, `start`, or `serve` as a `:`-separated part of the verb (`e2e:open:kpi-widget`) are left out: they do not end, and `preview_up` serves an app. |
 | `commands` | The repository's own `lint`, `test`, `build`, and `typecheck` scripts |
-| `e2e.root` | The repository or a directory one level below it with a `cypress.config.{ts,mts,cts,js,mjs,cjs}`. Two or more: unknown. |
-| `e2e.config` | A per-app Cypress config pattern: a `*.config.*` file in the e2e root or one level below it with an app's name as one of its dot-separated parts (`config/kpi.config.ts` gives `config/{app}.config.ts`), found for at least two apps, or for the only app. Without one, Cypress uses the root's default config. |
-| `e2e.auth` | `auth` of the UI SDK project file `c8y-ui.json` in the e2e root, or else at the repository root |
+| `e2e.root` | The repository or a directory one level below it with a `cypress.config.{ts,mts,cts,js,mjs,cjs}`. Two or more, or none: unknown, and Cypress runs in the repository; `e2e.config`, `e2e.auth`, and `e2e.env` of `config.yml` still apply. |
+| `e2e.config` | A per-app Cypress config pattern: a `*.config.*` file in the e2e root or one level below it with an app's name as one of its dot-separated parts (`config/kpi.config.ts` gives `config/{app}.config.ts`), found for at least two apps, or for the only app. Config files of other tools (`eslint.config.mjs`, `vite.config.ts`, …) do not count. Without one, Cypress uses the root's default config. |
+| `e2e.auth` | `auth` of the UI SDK project file `c8y-ui.json` in the e2e root, or else at the repository root, read with the SDK's defaults. When the SDK cannot settle the file's Web SDK version, the file's own `auth` and `world` count. |
 | `world` | `world` of that `c8y-ui.json`, relative to the repository, and whether the file exists. A repository that pulls its world at run time reports `exists: false`. |
 | `instructions` | `AGENTS.md`, `CLAUDE.md`, `.github/copilot-instructions.md`, `CONTRIBUTING.md` at the root |
 | `skills` | Directories with a `SKILL.md` under `.claude/skills/` and `.c8y-agent/skills/` |
 | `configured` | The fields `config.yml` set |
-| `unknown` | The fields discovery could not settle, each with the reason in parentheses when reading failed. A field that fails does not stop discovery. |
+| `unknown` | The fields discovery could not settle, each with the reason in parentheses when reading failed: `package.json (…)`, `apps.<name>.contextPath (…)`. A field that fails does not stop discovery. |
 
 Discovery does not guess Cypress environment variables: a Cypress config that reads the app's URL from its own variable (the toolkit's `C8Y_CYPRESS_URL`) needs `e2e.env` in `config.yml`.
 

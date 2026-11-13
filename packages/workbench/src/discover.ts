@@ -31,8 +31,8 @@ export interface Profile {
   /** Package scripts of the whole repository: lint, test, build, typecheck. */
   commands: Record<string, string>
   e2e?: {
-    /** Cypress project directory, relative to the repository. */
-    root: string
+    /** Cypress project directory, relative to the repository; without it, the repository. */
+    root?: string
     /** Cypress config file relative to the root, with `{app}` for the app name; the default config without it. */
     config?: string
     auth?: AuthMode
@@ -70,6 +70,9 @@ const LOCKFILES: Array<[string, NonNullable<Profile['packageManager']>['name']]>
 ]
 const REPOSITORY_COMMANDS = ['lint', 'test', 'build', 'typecheck']
 const INTERACTIVE = ['watch', 'open', 'dev', 'start', 'serve']
+// Config files of other tools, which a per-app Cypress config pattern must not match: `eslint.config.mjs` in a checkout
+// folder named `eslint` is not that app's Cypress config.
+const TOOL_CONFIGS = new Set(['angular', 'astro', 'babel', 'commitlint', 'cypress', 'eslint', 'jest', 'karma', 'lint-staged', 'next', 'nuxt', 'playwright', 'postcss', 'prettier', 'rollup', 'stylelint', 'svelte', 'tailwind', 'tsup', 'vite', 'vitest', 'webpack'])
 const INSTRUCTIONS = ['AGENTS.md', 'CLAUDE.md', '.github/copilot-instructions.md', 'CONTRIBUTING.md']
 
 interface PackageJson {
@@ -84,6 +87,18 @@ function readJson<T>(file: string): T | undefined {
   }
   catch {
     return undefined
+  }
+}
+
+/** A JSON file, or undefined without one; unreadable or invalid content throws. */
+function readJsonStrict<T>(file: string): T | undefined {
+  if (!existsSync(file))
+    return undefined
+  try {
+    return JSON.parse(readFileSync(file, 'utf8')) as T
+  }
+  catch (error) {
+    throw new Error(`${basename(file)}: ${errorMessage(error)}`)
   }
 }
 
@@ -195,6 +210,8 @@ function e2eConfigPattern(root: string, apps: string[]): string | undefined {
   const matches = new Map<string, Set<string>>()
   for (const file of configFiles(root)) {
     const parts = basename(file).split('.')
+    if (TOOL_CONFIGS.has(parts[0]!) && parts.length === 3)
+      continue
     for (const app of apps) {
       const at = parts.indexOf(app)
       if (at < 0)
@@ -209,12 +226,21 @@ function e2eConfigPattern(root: string, apps: string[]): string | undefined {
   return best[0]
 }
 
-/** The UI SDK project file `c8y-ui.json` of the e2e root, or else of the repository. */
+/**
+ * `auth` and `world` of the UI SDK project file `c8y-ui.json` of the e2e root, or else of the repository, through the SDK's
+ * `readConfig` (with its defaults). `readConfig` also settles the Web SDK version, which discovery does not need: when
+ * only that fails, the file's own `auth` and `world` count, without defaults.
+ */
 function sdkProject(repo: string, root: string | undefined): { dir: string, auth?: AuthMode, world?: string } | undefined {
   for (const dir of [...new Set([root, '.'])]) {
     if (dir === undefined || !isFile(join(repo, dir, 'c8y-ui.json')))
       continue
-    const config = readConfig(join(repo, dir))
+    const file = readJsonStrict<Record<string, unknown>>(join(repo, dir, 'c8y-ui.json'))
+    let config: Record<string, unknown> = file ?? {}
+    try {
+      config = readConfig(join(repo, dir)) as unknown as Record<string, unknown>
+    }
+    catch {}
     const auth = config.auth === 'login' || config.auth === 'open' ? config.auth : undefined
     return { dir, auth, world: typeof config.world === 'string' && config.world ? config.world : undefined }
   }
@@ -264,16 +290,12 @@ export function discover(repo: string, options: DiscoverOptions = {}): Profile {
     }
   }
 
-  const pkg = readJson<PackageJson>(join(repo, 'package.json'))
+  const pkg = settle('package.json', () => readJsonStrict<PackageJson>(join(repo, 'package.json')))
   const scripts = pkg?.scripts && typeof pkg.scripts === 'object' ? Object.keys(pkg.scripts).filter(name => typeof pkg.scripts![name] === 'string') : []
   const pm = settle('packageManager', () => packageManager(repo, pkg))
 
   const apps: ProfileApp[] = (settle('apps', () => listApps(repo)) ?? []).map((app) => {
-    let contextPath: string | undefined
-    try {
-      contextPath = detectConfig(join(repo, app.dir)).contextPath
-    }
-    catch {}
+    const contextPath = settle(`apps.${app.name}.contextPath`, () => detectConfig(join(repo, app.dir)).contextPath)
     const commands = { ...appCommands(scripts, [app.name, ...(app.project ? [app.project] : [])], pm), ...config?.projects?.[app.name]?.commands }
     return { ...app, ...(contextPath && { contextPath }), commands }
   })
@@ -286,27 +308,23 @@ export function discover(repo: string, options: DiscoverOptions = {}): Profile {
   Object.assign(commands, config?.commands)
 
   // e2e: an explicit root, then config.yml, then the single Cypress project; then its per-app configs and c8y-ui.json.
-  const roots = settle('e2e', () => e2eRoots(repo)) ?? []
+  // Without a root, Cypress runs in the repository: config.yml's e2e settings still apply, nothing is detected for it.
+  const roots = settle('e2e.root', () => e2eRoots(repo)) ?? []
   const root = options.e2eRoot ?? config?.e2e?.root ?? (roots.length === 1 ? roots[0] : undefined)
+  if (root === undefined && roots.length > 1)
+    unknown.push(`e2e.root (Cypress projects in ${roots.join(', ')})`)
+  else if (root === undefined && !unknown.some(field => field.startsWith('e2e.root')))
+    unknown.push('e2e.root')
   const project = settle('c8y-ui.json', () => sdkProject(repo, root))
-  let e2e: Profile['e2e']
-  if (root !== undefined) {
-    const pattern = config?.e2e?.config ?? settle('e2e.config', () => e2eConfigPattern(join(repo, root), apps.map(a => a.name)))
-    const auth = config?.e2e?.auth ?? project?.auth
-    e2e = { root, ...(pattern && { config: pattern }), ...(auth && { auth }), ...(config?.e2e?.env && { env: config.e2e.env }) }
-    if (pattern) {
-      for (const app of apps) {
-        const file = pattern.replaceAll('{app}', app.name)
-        if (isFile(join(repo, root, file)))
-          app.e2eConfig = file
-      }
+  const pattern = config?.e2e?.config ?? (root === undefined ? undefined : settle('e2e.config', () => e2eConfigPattern(join(repo, root), apps.map(a => a.name))))
+  const auth = config?.e2e?.auth ?? project?.auth
+  const e2e: Profile['e2e'] = { ...(root !== undefined && { root }), ...(pattern && { config: pattern }), ...(auth && { auth }), ...(config?.e2e?.env && { env: config.e2e.env }) }
+  if (pattern) {
+    for (const app of apps) {
+      const file = pattern.replaceAll('{app}', app.name)
+      if (isFile(join(repo, root ?? '.', file)))
+        app.e2eConfig = file
     }
-  }
-  else if (roots.length > 1) {
-    unknown.push(`e2e (Cypress projects in ${roots.join(', ')})`)
-  }
-  else if (!unknown.some(field => field.startsWith('e2e'))) {
-    unknown.push('e2e')
   }
 
   const projectWorld = project?.world && (posix.isAbsolute(project.world) ? project.world : posix.join(project.dir, project.world))
@@ -329,7 +347,7 @@ export function discover(repo: string, options: DiscoverOptions = {}): Profile {
     versions,
     apps,
     commands,
-    ...(e2e && { e2e }),
+    ...(Object.keys(e2e).length > 0 && { e2e }),
     ...(world && { world }),
     instructions: INSTRUCTIONS.filter(file => isFile(join(repo, file))),
     skills: settle('skills', () => skillDirs(repo)) ?? [],
@@ -351,7 +369,7 @@ export function targetFromProfile(repo: string, profile: Profile, overrides: Tar
     repo,
     world: profile.world?.file ?? '',
     ...(e2e && {
-      e2eRoot: e2e.root,
+      ...(e2e.root !== undefined && { e2eRoot: e2e.root }),
       ...(e2e.config && { e2eConfig: e2e.config, e2eConfigOptional: !profile.configured.includes('e2e.config') }),
       ...(e2e.auth && { e2eAuth: e2e.auth }),
     }),

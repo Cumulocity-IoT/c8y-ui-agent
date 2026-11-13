@@ -144,12 +144,16 @@ describe('discover', () => {
       'package.json': { dependencies: { '@c8y/ngx-components': '>=1024.0.0' } },
       'angular.json': { version: 1 },
       'cypress.config.ts': '',
-      'c8y-ui.json': { world: '/abs/world.json' },
+      'c8y-ui.json': '{bad',
       '.nvmrc/x': '',
     })
     const profile = discover(dir)
     expect(profile.apps).toEqual([])
-    expect(profile.unknown).toEqual(expect.arrayContaining([expect.stringMatching(/^apps \(/), expect.stringMatching(/^c8y-ui\.json \(/), 'world', 'node']))
+    expect(profile.unknown).toEqual(expect.arrayContaining([expect.stringMatching(/^apps \(/), expect.stringMatching(/^c8y-ui\.json \(c8y-ui\.json: /), 'world', 'node']))
+    const broken = discover(repo({ 'package.json': '{bad', 'cypress.config.ts': '' }))
+    expect(broken.unknown).toEqual(expect.arrayContaining([expect.stringMatching(/^package\.json \(package\.json: /)]))
+    expect(broken.apps).toEqual([expect.objectContaining({ commands: {} })])
+    expect(broken.unknown).toEqual(expect.arrayContaining([expect.stringMatching(/^apps\..+\.contextPath \(/)]))
     expect(discover(repo({ '.c8y-agent/config.yml': 'e2e: { root: missing }' })).unknown).toEqual(expect.arrayContaining([expect.stringMatching(/^e2e\.config \(/)]))
   })
 
@@ -172,7 +176,7 @@ describe('discover', () => {
     expect(profile.packageManager).toEqual({ name: 'npm' })
     expect(profile.apps).toEqual([{ name: dir.split('/').pop(), dir: '', commands: expect.any(Object) }])
     expect(profile.e2e).toEqual({ root: '.' })
-    expect(profile.unknown).toEqual(['world', 'node', 'versions.webSdk', 'versions.angular'])
+    expect(profile.unknown).toEqual([expect.stringMatching(/^apps\..+\.contextPath \(no package\.json /), 'world', 'node', 'versions.webSdk', 'versions.angular'])
   })
 
   it('does not guess between two Cypress projects or from one config file of several apps', () => {
@@ -181,9 +185,44 @@ describe('discover', () => {
       'e2e/cypress.config.ts': '',
       'test/cypress.config.ts': '',
     })
-    expect(discover(dir).unknown).toContain('e2e (Cypress projects in e2e, test)')
+    expect(discover(dir).unknown).toContain('e2e.root (Cypress projects in e2e, test)')
     const one = repo({ 'angular.json': WORKSPACE['angular.json'], 'test/cypress.config.ts': '', 'test/config/kpi.config.ts': '' })
     expect(discover(one).e2e).toEqual({ root: 'test' })
+  })
+
+  it('applies config.yml\'s e2e settings when no e2e root is settled', () => {
+    const dir = repo({
+      'e2e/cypress.config.ts': '',
+      'test/cypress.config.ts': '',
+      '.c8y-agent/config.yml': 'e2e: { auth: login, env: { C8Y_CYPRESS_URL: "{devUrl}" } }',
+    })
+    const profile = discover(dir)
+    expect(profile.e2e).toEqual({ auth: 'login', env: { C8Y_CYPRESS_URL: '{devUrl}' } })
+    expect(profile.unknown).toContain('e2e.root (Cypress projects in e2e, test)')
+    const target = targetFromProfile(dir, profile)
+    expect(target).toMatchObject({ e2eAuth: 'login', e2eEnv: { C8Y_CYPRESS_URL: '{devUrl}' } })
+    expect(target.e2eRoot).toBeUndefined()
+  })
+
+  it('does not take another tool\'s config file for an app\'s Cypress config', () => {
+    const dir = repo({
+      'angular.json': { projects: { vite: { root: 'packages/vite', architect: { serve: {} } } } },
+      'packages/vite/package.json': { name: 'vite' },
+      'cypress.config.ts': '',
+      'vite.config.ts': '',
+    })
+    expect(discover(dir).e2e).toEqual({ root: '.' })
+  })
+
+  it('keeps auth and world of a c8y-ui.json whose Web SDK version the SDK cannot settle', () => {
+    const dir = repo({
+      'package.json': { dependencies: { '@c8y/ngx-components': '>=1024.0.0' } },
+      'test/cypress.config.ts': '',
+      'test/c8y-ui.json': { auth: 'login', version: 'auto', world: 'mock/world.json' },
+    })
+    const profile = discover(dir)
+    expect(profile.e2e).toEqual({ root: 'test', auth: 'login' })
+    expect(profile.world).toEqual({ file: 'test/mock/world.json', exists: false })
   })
 })
 
