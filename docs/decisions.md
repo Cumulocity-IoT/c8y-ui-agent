@@ -102,4 +102,29 @@ Decided on 2026-11-05.
 
 Rejected: counting only the gaps the report attributes to a tested spec, or to no test, as the specification's evidence rules said and the workbench did until 0.3.0. In a proof it removes no gap that came from another spec, because no other spec runs. It only drops gaps whose test names differ from the reporter's, for example a spec path relative to another root, and turns `observed` into `regression`.
 
+## D15: Phase 2 builds the result file and the apply job here, not in the toolkit's loop
+
+The specification adds `result.json`, the git bundle, the apply job and App tokens to the toolkit's current issue loop. Phase 2 builds them in this repository instead, as the package `@cumulocity-iot/c8y-ui-apply` with the job definition in [result.md](result.md), tested against local git repositories. Phase 3's reusable workflow runs them. The toolkit's loop, with its personal access token, stays as it is until phase 3 replaces it, as in D13.
+
+The egress allowlist belongs to the agent job, and the required reviewers for CI jobs with secrets to the onboarding of each repository: both come with the reusable workflow and the `setup` playbook. The App is not registered yet; [github-app.md](github-app.md) lists the steps for an organization owner.
+
+Rejected: changing the toolkit's docker-agent loop to write `result.json` and to push from an apply job. It removes the personal access token months earlier, but phase 3 replaces the loop.
+
+Decided on 2026-11-09.
+
+## D16: The apply step trusts only the workflow, checks before it gets a token, and has no runtime dependencies
+
+- **Trusted inputs:** the issue or pull request number, the playbook, the base commit, and the default branch come from the workflow's filter and context jobs. `result.json` and the bundle come from the agent's runner and decide none of them; the branch is always `agent/<number>-<playbook>`.
+- **Check first:** `c8y-ui-apply check` needs no token. The job then mints a token that can push only when the check passed, otherwise one that can only comment. `apply` runs the check again before it writes.
+- **No runtime dependencies:** the package is bundled (`yaml` inlined), uses `fetch` for the GitHub API and the `git` CLI with hooks off, and installs with `--ignore-scripts`. Nothing resolves a version range in the job that holds the write token.
+- **Protected paths** beyond D2: files that decide where code and packages come from or run code on install (`.gitmodules`, `.npmrc`, `.yarnrc*`, `bunfig.toml`, `.pnpmfile.*`, `.yarn/releases/`, `.yarn/plugins/`), and tools that run on developers' machines (`.husky/`, `.vscode/`, `.devcontainer/`). Agent instructions (`.claude/`, `AGENTS.md`, `CLAUDE.md`, `CLAUDE.local.md`, `.mcp.json`) are protected at any depth, because agents read nested ones too. Matching ignores case. Every commit's paths count, not only the net change. A lockfile needs a manifest change in its own package. A `protect` list that cannot be read fails the check.
+- **Labels:** the agent may add state labels only. A label the App adds starts workflows, so a playbook label (`agent:setup`) would let the agent start another playbook or a loop.
+- **Secrets:** `C8Y_UI_AGENT_CLIENT_ID` replaces the specification's `C8Y_UI_AGENT_APP_ID`: `actions/create-github-app-token` v3 deprecates the App ID input.
+
+Rejected:
+
+- A JavaScript action in this repository: it needs its build output committed, and releases commit nothing back.
+- Octokit: a dependency tree in the job that holds the write token, for seven REST calls.
+- Validating in the agent job: the agent can change its runner, so a check there proves nothing. The agent runs `c8y-ui-apply validate` only to find its own mistakes early.
+
 Decided on 2026-11-09.
