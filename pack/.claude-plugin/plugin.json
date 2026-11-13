@@ -1,0 +1,7 @@
+{
+  "name": "c8y-ui-agent",
+  "version": "0.0.0-development",
+  "description": "The C8Y UI Agent's roles and guardrail hooks. The workflow loads it with --plugin-dir; playbooks and run.md are resolved by c8y-ui-apply. See docs/pack.md.",
+  "author": { "name": "Cumulocity GmbH" },
+  "license": "Apache-2.0"
+}

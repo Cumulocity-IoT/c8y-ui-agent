@@ -46,6 +46,13 @@ describe('check', () => {
       .toEqual(['outcome comment, but the run made 1 commit(s): use outcome pull-request, or drop the commits'])
   })
 
+  it('allows no pull request for a playbook whose result is the status comment', () => {
+    commit(r.agent, { 'src/app.ts': 'x\n' })
+    expect(agentRun(PR, { playbook: 'triage', playbookResult: 'comment' }).violations.map(v => v.message))
+      .toEqual(['outcome pull-request, but the playbook triage answers with the status comment only'])
+    expect(agentRun(PR, { playbookResult: 'pull-request' }).ok).toBe(true)
+  })
+
   it('rejects protected paths, deletions and renames included, and the protect list of the default branch', () => {
     commit(r.agent, { '.github/workflows/x.yml': 'on: push\n', 'src/generated/a.ts': 'x\n' })
     run(r.agent, 'mv', 'src/app.ts', 'AGENTS.md')
@@ -154,6 +161,7 @@ describe('check', () => {
     expect(() => check({ ...base, number: 0 })).toThrow(UsageError)
     expect(() => check({ ...base, playbook: '../x' })).toThrow(UsageError)
     expect(() => check({ ...base, base: 'main' })).toThrow(UsageError)
+    expect(() => check({ ...base, playbookResult: 'review' as 'comment' })).toThrow(UsageError)
     expect(() => check({ ...base, defaultBranch: 'gone' })).toThrow(/origin\/gone is not in the checkout/)
   })
 

@@ -7,7 +7,7 @@ An agent run writes nothing to GitHub. Its job ends with two files, and a separa
 | Agent | No GitHub credential | Writes `result.json`; `c8y-ui-apply bundle` packs its commits since the base into `agent.bundle`. Uploads both as an artifact. |
 | Apply | First no token, then an App token | `c8y-ui-apply check` in a fresh checkout. Then `c8y-ui-apply apply` with a token whose permissions depend on the check: push, pull request, labels, status comment; or only the status comment that names the rejected rules. |
 
-Everything the agent job produces is untrusted: the agent can change any file on its runner, including the artifact. The apply job therefore takes the number, the playbook, the base commit, and the default branch from the workflow (the filter and context jobs), never from the agent's files. The number is the issue the run works on: it names the branch `agent/<number>-<playbook>` and receives the status comment. A rework round started on the agent's pull request passes the issue number from the branch name.
+Everything the agent job produces is untrusted: the agent can change any file on its runner, including the artifact. The apply job therefore takes the number, the playbook, the playbook's result (`pull-request` or `comment`, from `c8y-ui-apply playbook`, [pack.md](pack.md)), the base commit, and the default branch from the workflow (the filter and context jobs), never from the agent's files. The number is the issue the run works on: it names the branch `agent/<number>-<playbook>` and receives the status comment. A rework round started on the agent's pull request passes the issue number from the branch name.
 
 ## result.json
 
@@ -42,7 +42,7 @@ Unknown fields are errors, so a typo does not pass silently. The file is at most
 
 | Rule | Fails when |
 |---|---|
-| `result` | `result.json` is missing, not a file, larger than 1 MB, or invalid; `pull-request` without commits; `comment` or `failed` with commits |
+| `result` | `result.json` is missing, not a file, larger than 1 MB, or invalid; `pull-request` without commits, or from a playbook whose result is `comment`; `comment` or `failed` with commits |
 | `base` | The base is not in the checkout; or the agent branch `agent/<number>-<playbook>` exists and is neither at the base (a rework round starts from the branch) nor at the bundle's head (a re-run after a push that succeeded); or the branch does not exist and the base is not on the default branch |
 | `bundle` | Larger than 50 MB; its prerequisites are not in the repository; more than one head; commits that do not descend from the base; more than 50 commits; merge commits; a commit message that skips CI (`[skip ci]`, `[ci skip]`, `[no ci]`, `[skip actions]`, `[actions skip]`, `skip-checks: true`) |
 | `github` | A changed path under `.github/` |
@@ -86,6 +86,7 @@ apply:
   env:
     NUMBER: ${{ needs.context.outputs.number }}
     PLAYBOOK: ${{ needs.context.outputs.playbook }}
+    PLAYBOOK_RESULT: ${{ needs.context.outputs.playbook-result }}
     BASE: ${{ needs.context.outputs.base }}
     DEFAULT_BRANCH: ${{ needs.context.outputs.default-branch }}
   steps:
@@ -105,7 +106,7 @@ apply:
       run: >-
         "$RUNNER_TEMP/apply/node_modules/.bin/c8y-ui-apply" check --dir repo
         --result "$RUNNER_TEMP/agent/result.json" --bundle "$RUNNER_TEMP/agent/agent.bundle"
-        --base "$BASE" --default-branch "$DEFAULT_BRANCH" --number "$NUMBER" --playbook "$PLAYBOOK"
+        --base "$BASE" --default-branch "$DEFAULT_BRANCH" --number "$NUMBER" --playbook "$PLAYBOOK" --playbook-result "$PLAYBOOK_RESULT"
     # A passed check gets a token that can push; anything else only a token that can comment.
     - id: write
       if: steps.check.outputs.ok == 'true'
@@ -127,7 +128,7 @@ apply:
     - run: >-
         "$RUNNER_TEMP/apply/node_modules/.bin/c8y-ui-apply" apply --dir repo
         --result "$RUNNER_TEMP/agent/result.json" --bundle "$RUNNER_TEMP/agent/agent.bundle"
-        --base "$BASE" --default-branch "$DEFAULT_BRANCH" --number "$NUMBER" --playbook "$PLAYBOOK"
+        --base "$BASE" --default-branch "$DEFAULT_BRANCH" --number "$NUMBER" --playbook "$PLAYBOOK" --playbook-result "$PLAYBOOK_RESULT"
         --bot-login "$SLUG[bot]" --run-url "$RUN_URL"
       env:
         GH_TOKEN: ${{ steps.write.outputs.token || steps.report.outputs.token }}

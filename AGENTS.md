@@ -8,6 +8,7 @@ A GitHub App that works on Cumulocity Web SDK apps and plugins with Claude Code.
 - [docs/prove-regression.md](docs/prove-regression.md): the rules of `prove_regression`.
 - [docs/result.md](docs/result.md): `result.json`, the bundle, and the apply job's rules.
 - [docs/discovery.md](docs/discovery.md): the repository profile and the `config.yml` keys the workbench reads.
+- [docs/pack.md](docs/pack.md): the agent pack: playbook format and resolution, roles, hooks.
 
 Keep knowledge in the repository, not in a private agent memory.
 
@@ -31,6 +32,8 @@ packages/apply/       @cumulocity-iot/c8y-ui-apply: result.json, the agent's git
   src/check.ts        the check in a fresh checkout, before any token
   src/apply.ts        push, pull request, labels, status comment; src/github.ts the REST calls
   src/bundle.ts       the agent job's bundle; src/cli.ts the bin
+  src/playbook.ts     playbook resolution: the pack's built-ins and .c8y-agent/playbooks/, the run prompt
+pack/                 the agent pack, a Claude Code plugin (docs/pack.md): run.md, playbooks/, agents/, hooks/
 ```
 
 ## Package rules
@@ -38,6 +41,7 @@ packages/apply/       @cumulocity-iot/c8y-ui-apply: result.json, the agent's git
 - Workbench: nothing may write to stdout in MCP mode. Pass an output callback to every SDK call and child process.
 - `prove_regression` rules live in `src/evaluate.ts` as a pure function with unit tests; change `docs/prove-regression.md` with them.
 - The apply package (`packages/apply`) has no runtime dependencies: bundle what it needs, and take every input that decides where a result goes from the workflow, never from the agent's files (D16). Change `docs/result.md` with its rules.
+- The pack's hooks (`pack/hooks/`) run in the agent's session: plain Node ESM, no dependencies, no build. Change `docs/pack.md` with the playbook format, the roles, or the guard's rules.
 - The reporter (`reporter/index.cjs`) runs inside Cypress: CommonJS, no dependencies. Its unit test mirrors the event shape of Cypress 15; check it against a real Cypress run after a Cypress major.
 
 ## Rules

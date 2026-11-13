@@ -31,6 +31,11 @@ export interface CheckOptions {
   /** The issue or pull request the run is for. */
   number: number
   playbook: string
+  /**
+   * The playbook's result, from its resolution in the workflow (`c8y-ui-apply playbook`): `comment` allows no pull
+   * request. Without it, both are allowed.
+   */
+  playbookResult?: 'pull-request' | 'comment'
 }
 
 export interface CheckReport {
@@ -62,6 +67,8 @@ function validate(options: CheckOptions): void {
     throw new UsageError(`the base must be a full commit id, not ${JSON.stringify(options.base)}`)
   if (!/^[\w./-]+$/.test(options.defaultBranch) || options.defaultBranch.startsWith('-'))
     throw new UsageError(`invalid default branch ${JSON.stringify(options.defaultBranch)}`)
+  if (options.playbookResult !== undefined && options.playbookResult !== 'pull-request' && options.playbookResult !== 'comment')
+    throw new UsageError(`the playbook result must be pull-request or comment, not ${JSON.stringify(options.playbookResult)}`)
 }
 
 /** `protect` of `.c8y-agent/config.yml` on the default branch: the agent's commits cannot change it. */
@@ -218,6 +225,8 @@ export function check(options: CheckOptions): CheckReport {
     })
   }
 
+  if (result?.outcome === 'pull-request' && options.playbookResult === 'comment')
+    violations.push({ rule: 'result', message: `outcome pull-request, but the playbook ${options.playbook} answers with the status comment only` })
   if (result?.outcome === 'pull-request' && commits === 0 && !violations.some(v => v.rule === 'bundle'))
     violations.push({ rule: 'result', message: 'outcome pull-request, but the run made no commits' })
   if (result && result.outcome !== 'pull-request' && commits > 0)
