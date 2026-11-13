@@ -6,7 +6,7 @@ The App installs only in the `Cumulocity-IoT` organization. Its packages are not
 
 ## Status
 
-Phase 1 of 6, the workbench, is done: `preview_up`, `screenshot`, `check` and `prove_regression` work on the `cumulocity-ui-toolkit` pilot. The toolkit's issue loop stays as it is until phase 3 replaces it ([D13](docs/decisions.md#d13-phase-1-ends-without-switching-the-toolkits-issue-loop)). Phase 2: `@cumulocity-iot/c8y-ui-apply` checks an agent run's `result.json` and git bundle and writes them to GitHub ([docs/result.md](docs/result.md)); the GitHub App is not registered yet ([docs/github-app.md](docs/github-app.md)). Nothing here is ready for production use yet.
+Phase 1 of 6, the workbench, is done: `preview_up`, `screenshot`, `check` and `prove_regression` work on the `cumulocity-ui-toolkit` pilot. The toolkit's issue loop stays as it is until phase 3 replaces it ([D13](docs/decisions.md#d13-phase-1-ends-without-switching-the-toolkits-issue-loop)). Phase 2: `@cumulocity-iot/c8y-ui-apply` checks an agent run's `result.json` and git bundle and writes them to GitHub ([docs/result.md](docs/result.md)); the GitHub App is not registered yet ([docs/github-app.md](docs/github-app.md)). Phase 3 has the agent pack with `triage` and `fix` ([docs/pack.md](docs/pack.md)) and the reusable workflow ([docs/workflow.md](docs/workflow.md)), which has not run on GitHub yet: it needs the App, and it has no egress allowlist yet. Nothing here is ready for production use yet.
 
 | Phase | Content |
 |---|---|
@@ -28,18 +28,19 @@ docs/prove-regression.md  the rules of prove_regression
 docs/result.md        result.json and the apply job
 docs/discovery.md     the repository profile and its corrections in .c8y-agent/config.yml
 docs/pack.md          the agent pack: playbooks, roles, hooks, and how a run starts
+docs/workflow.md      the reusable workflow .github/workflows/run.yml: calling it, triggers, jobs, versions
 docs/github-app.md    registering the GitHub App
 docs/pilot-sessions.md  agent sessions on real issues, and what they changed
 ```
 
-Next: `.github/workflows/run.yml`, the reusable workflow that repositories call.
+Next: the egress allowlist of the agent job, a first run in a test repository, then the toolkit's move to the caller workflow.
 
 ## Versions
 
 One version line for everything in this repository, released by semantic-release from conventional commits:
 
 - The packages are published to GitHub Packages: `@cumulocity-iot/c8y-ui-workbench` and `@cumulocity-iot/c8y-ui-apply`.
-- The tag `v<version>` versions the reusable workflow and the agent pack. With the reusable workflow (phase 3), a moving major tag lets repositories call `run.yml@v1`; while the version is 0.x, they pin an exact tag.
+- The tag `v<version>` versions the reusable workflow and the agent pack: `run.yml` installs the packages of the release at its own commit. From 1.0, a moving major tag lets repositories call `run.yml@v1`; while the version is 0.x, they pin an exact tag.
 
 Development and release steps: [CONTRIBUTING.md](CONTRIBUTING.md).
 

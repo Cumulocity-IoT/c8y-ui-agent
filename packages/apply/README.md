@@ -8,11 +8,13 @@ Requires Node 22.13 or later and git. No runtime dependencies. Install from GitH
 
 | Command | Job | Does |
 |---|---|---|
+| `c8y-ui-apply route [--event <file>] [--event-name <name>]` | Filter | Whether the event starts a run; step outputs `run`, `number`, `playbook`, `trigger`, `comment` ([docs/workflow.md](https://github.com/Cumulocity-IoT/c8y-ui-agent/blob/main/docs/workflow.md)) |
+| `c8y-ui-apply context --number <n> --playbook <name> --default-sha <sha> --out <dir> [--comment <id>]` | Context, read token in `GH_TOKEN` | Writes `issue.md` and `request.md`; step outputs `base` and `rework` |
 | `c8y-ui-apply validate <result.json>` | Agent | Reports every error of `result.json`; exit 1 if any |
 | `c8y-ui-apply bundle --base <sha> --out <file>` | Agent | The commits since the base as a git bundle; none without commits |
-| `c8y-ui-apply playbooks --pack <dir> [--dir <checkout>]` | Filter, context | The playbooks the repository can run, and the errors of its playbook files ([docs/pack.md](https://github.com/Cumulocity-IoT/c8y-ui-agent/blob/main/docs/pack.md)) |
-| `c8y-ui-apply playbook <name> --pack <dir> [--dir <checkout>] [--prompt <file>]` | Context, agent | One playbook; step outputs `evidence` and `result`; `--prompt` writes the run's system prompt |
+| `c8y-ui-apply playbooks --pack <dir> [--dir <checkout>]` | Any | The playbooks the repository can run, and the errors of its playbook files ([docs/pack.md](https://github.com/Cumulocity-IoT/c8y-ui-agent/blob/main/docs/pack.md)) |
+| `c8y-ui-apply playbook <name> --pack <dir> [--dir <checkout>] [--prompt <file>]` | Context | One playbook; step outputs `evidence` and `result`; `--prompt` writes the run's system prompt. Exit 1 with step output `error` when the repository cannot run it |
 | `c8y-ui-apply check …` | Apply, no token | Checks result and bundle in a fresh checkout; step output `ok` |
-| `c8y-ui-apply apply … --bot-login <login>` | Apply, App token in `GH_TOKEN` | Checks again, then pushes, opens or updates the pull request, labels, and edits the status comment; or reports the rejection |
+| `c8y-ui-apply apply … --bot-login <login> [--remove-label <label>]…` | Apply, App token in `GH_TOKEN` | Checks again, then pushes, opens or updates the pull request, labels, and edits the status comment; or reports the rejection. `--remove-label` removes the label that started the run either way |
 
-`c8y-ui-apply --help` lists the options. The same functions are exported for scripts: `parseResult`, `bundle`, `check`, `apply`, `checkPaths`, `listPlaybooks`, `resolvePlaybook`, `runPrompt`.
+`c8y-ui-apply --help` lists the options. The same functions are exported for scripts: `route`, `parseCommand`, `writeContext`, `parseResult`, `bundle`, `check`, `apply`, `checkPaths`, `listPlaybooks`, `resolvePlaybook`, `runPrompt`.

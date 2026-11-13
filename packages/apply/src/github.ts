@@ -15,7 +15,25 @@ export class GitHubError extends Error {
   }
 }
 
-export interface Comment { id: number, body?: string, user?: { login: string } | null }
+export interface Comment {
+  id: number
+  body?: string | null
+  user?: { login: string } | null
+  author_association?: string
+  created_at?: string
+  html_url?: string
+}
+export interface Issue {
+  number: number
+  title: string
+  body?: string | null
+  state?: string
+  user?: { login: string } | null
+  author_association?: string
+  labels?: Array<{ name?: string } | string>
+  pull_request?: unknown
+  html_url?: string
+}
 export interface PullRequest { number: number, html_url: string, draft?: boolean }
 
 export class GitHub {
@@ -59,6 +77,27 @@ export class GitHub {
       all.push(...batch)
       if (batch.length < 100)
         return all
+    }
+  }
+
+  issue(number: number): Promise<Issue> {
+    return this.request('GET', `/issues/${number}`)
+  }
+
+  comment(id: number): Promise<Comment> {
+    return this.request('GET', `/issues/comments/${id}`)
+  }
+
+  /** The commit a branch points to, or undefined if it does not exist. */
+  async branchHead(branch: string): Promise<string | undefined> {
+    try {
+      const ref = await this.request<{ ref?: string, object?: { sha?: string } }>('GET', `/git/ref/heads/${branch.split('/').map(encodeURIComponent).join('/')}`)
+      return ref.ref === `refs/heads/${branch}` ? ref.object?.sha : undefined
+    }
+    catch (error) {
+      if (error instanceof GitHubError && error.status === 404)
+        return undefined
+      throw error
     }
   }
 

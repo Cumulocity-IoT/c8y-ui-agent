@@ -153,6 +153,9 @@ function builtins(pack: string): Map<string, Playbook> {
   return playbooks
 }
 
+/** The repository cannot run the playbook: unknown, switched off, broken, or an invalid `config.yml`. */
+export class PlaybookError extends UsageError {}
+
 /** `playbooks` of `.c8y-agent/config.yml`: playbook names switched off. An invalid file is an error. */
 function switches(dir: string): Map<string, boolean> {
   const file = join(dir, CONFIG_FILE)
@@ -163,13 +166,13 @@ function switches(dir: string): Map<string, boolean> {
     config = parseYaml(readFileSync(file, 'utf8'))
   }
   catch (error) {
-    throw new UsageError(`${CONFIG_FILE} is not valid YAML: ${(error as Error).message.split('\n')[0]}`)
+    throw new PlaybookError(`${CONFIG_FILE} is not valid YAML: ${(error as Error).message.split('\n')[0]}`)
   }
   const playbooks = (config as { playbooks?: unknown } | null)?.playbooks
   if (playbooks === undefined || playbooks === null)
     return new Map()
   if (typeof playbooks !== 'object' || Array.isArray(playbooks) || Object.values(playbooks).some(on => typeof on !== 'boolean'))
-    throw new UsageError(`playbooks in ${CONFIG_FILE} must map playbook names to true or false`)
+    throw new PlaybookError(`playbooks in ${CONFIG_FILE} must map playbook names to true or false`)
   return new Map(Object.entries(playbooks as Record<string, boolean>))
 }
 
@@ -270,17 +273,17 @@ export function listPlaybooks(options: PlaybookOptions): PlaybookList {
  */
 export function resolvePlaybook(name: string, options: PlaybookOptions): Playbook {
   if (!PLAYBOOK.test(name))
-    throw new UsageError(`the playbook must be a lowercase name, not ${JSON.stringify(name)}`)
+    throw new PlaybookError(`the playbook must be a lowercase name, not ${JSON.stringify(name)}`)
   const { playbooks, disabled: off, byName } = collect(options)
   if (off.includes(name))
-    throw new UsageError(`the playbook ${name} is switched off in ${CONFIG_FILE}`)
+    throw new PlaybookError(`the playbook ${name} is switched off in ${CONFIG_FILE}`)
   const problems = byName.get(name)
   if (problems)
-    throw new UsageError(problems.join('\n'))
+    throw new PlaybookError(problems.join('\n'))
   const playbook = playbooks.find(p => p.name === name)
   if (playbook)
     return playbook
-  throw new UsageError(`no playbook ${name}; available: ${playbooks.map(p => p.name).join(', ') || 'none'}`)
+  throw new PlaybookError(`no playbook ${name}; available: ${playbooks.map(p => p.name).join(', ') || 'none'}`)
 }
 
 /** The system prompt of a run: the pack's `run.md`, then the playbook. */

@@ -9,6 +9,7 @@ A GitHub App that works on Cumulocity Web SDK apps and plugins with Claude Code.
 - [docs/result.md](docs/result.md): `result.json`, the bundle, and the apply job's rules.
 - [docs/discovery.md](docs/discovery.md): the repository profile and the `config.yml` keys the workbench reads.
 - [docs/pack.md](docs/pack.md): the agent pack: playbook format and resolution, roles, hooks.
+- [docs/workflow.md](docs/workflow.md): the reusable workflow `run.yml`: triggers, jobs, versions.
 
 Keep knowledge in the repository, not in a private agent memory.
 
@@ -33,7 +34,9 @@ packages/apply/       @cumulocity-iot/c8y-ui-apply: result.json, the agent's git
   src/apply.ts        push, pull request, labels, status comment; src/github.ts the REST calls
   src/bundle.ts       the agent job's bundle; src/cli.ts the bin
   src/playbook.ts     playbook resolution: the pack's built-ins and .c8y-agent/playbooks/, the run prompt
+  src/route.ts        the filter job: which event starts which run; src/context.ts the context job's files and base
 pack/                 the agent pack, a Claude Code plugin (docs/pack.md): run.md, playbooks/, agents/, hooks/
+.github/workflows/run.yml  the reusable workflow that repositories call (docs/workflow.md)
 ```
 
 ## Package rules
@@ -42,6 +45,7 @@ pack/                 the agent pack, a Claude Code plugin (docs/pack.md): run.m
 - `prove_regression` rules live in `src/evaluate.ts` as a pure function with unit tests; change `docs/prove-regression.md` with them.
 - The apply package (`packages/apply`) has no runtime dependencies: bundle what it needs, and take every input that decides where a result goes from the workflow, never from the agent's files (D16). Change `docs/result.md` with its rules.
 - The pack's hooks (`pack/hooks/`) run in the agent's session: plain Node ESM, no dependencies, no build. Change `docs/pack.md` with the playbook format, the roles, or the guard's rules.
+- The reusable workflow (`.github/workflows/run.yml`) decides in `c8y-ui-apply` (route, context, playbook, check), not in shell, so the decisions have unit tests. Change `docs/workflow.md` with its jobs, triggers, or inputs.
 - The reporter (`reporter/index.cjs`) runs inside Cypress: CommonJS, no dependencies. Its unit test mirrors the event shape of Cypress 15; check it against a real Cypress run after a Cypress major.
 
 ## Rules

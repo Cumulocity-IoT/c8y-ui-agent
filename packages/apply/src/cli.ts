@@ -5,22 +5,31 @@ import { resolve } from 'node:path'
 import { parseArgs } from 'node:util'
 import { apply } from './apply'
 import { bundle } from './bundle'
-import { check, UsageError } from './check'
+import { check, PLAYBOOK, UsageError } from './check'
 import type { CheckOptions } from './check'
+import { writeContext } from './context'
 import { GitHub } from './github'
-import { listPlaybooks, resolvePlaybook, runPrompt } from './playbook'
+import { listPlaybooks, PlaybookError, resolvePlaybook, runPrompt } from './playbook'
 import { parseResult } from './result'
+import { route, RouteError } from './route'
 
 const USAGE = `Usage:
+  c8y-ui-apply route [--event <file>] [--event-name <name>]
+                                             whether the event starts a run (filter job; default: GITHUB_EVENT_PATH,
+                                             GITHUB_EVENT_NAME); step outputs run, number, playbook, trigger, comment
+  c8y-ui-apply context --number <n> --playbook <name> --default-sha <sha> --out <dir> [--comment <id>]
+                                             the issue thread and the request as files, and the run's base (context job);
+                                             read token in GH_TOKEN, repository in GITHUB_REPOSITORY
   c8y-ui-apply validate <result.json>        check result.json (for the agent; exit 1 with the errors)
   c8y-ui-apply bundle --base <sha> --out <file> [--dir <checkout>]
                                              the agent's commits since the base as a git bundle
   c8y-ui-apply playbooks --pack <dir> [--dir <checkout>]
                                              the playbooks the repository can run (docs/pack.md)
   c8y-ui-apply playbook <name> --pack <dir> [--dir <checkout>] [--prompt <file>]
-                                             one playbook; --prompt writes the run's system prompt
+                                             one playbook; --prompt writes the run's system prompt; exit 1 and step
+                                             output error when the repository cannot run it
   c8y-ui-apply check <options>               check result and bundle in a fresh checkout; no token
-  c8y-ui-apply apply <options> --bot-login <login> [--run-url <url>]
+  c8y-ui-apply apply <options> --bot-login <login> [--run-url <url>] [--remove-label <label>]…
                                              check again, then push, open the pull request, label and comment;
                                              token in GH_TOKEN, repository in GITHUB_REPOSITORY
 
@@ -53,6 +62,11 @@ const { values, positionals } = parseArgs({
     'prompt': { type: 'string' },
     'bot-login': { type: 'string' },
     'run-url': { type: 'string' },
+    'remove-label': { type: 'string', multiple: true },
+    'event': { type: 'string' },
+    'event-name': { type: 'string' },
+    'default-sha': { type: 'string' },
+    'comment': { type: 'string' },
     'help': { type: 'boolean', short: 'h' },
   },
 })
@@ -60,6 +74,21 @@ const { values, positionals } = parseArgs({
 const out = (value: unknown): void => void process.stdout.write(`${JSON.stringify(value, null, 2)}\n`)
 // One line per message: a newline in the agent's text must not start a line the runner reads as a workflow command.
 const log = (line: string): void => void process.stderr.write(`${line.replace(/[\r\n]+/g, ' ')}\n`)
+
+function github(): { github: GitHub, repository: string, token: string } {
+  const token = process.env.GH_TOKEN
+  const repository = process.env.GITHUB_REPOSITORY
+  if (!token || !repository)
+    throw new UsageError('GH_TOKEN and GITHUB_REPOSITORY must be set in the environment')
+  return { github: new GitHub({ token, repository }), repository, token }
+}
+
+function positive(name: 'number' | 'comment'): number {
+  const value = required(name)
+  if (!/^[1-9]\d{0,15}$/.test(value))
+    throw new UsageError(`--${name} must be a positive integer, not ${value}`)
+  return Number(value)
+}
 
 function required(name: keyof typeof values): string {
   const value = values[name]
@@ -95,6 +124,56 @@ async function main(): Promise<number> {
     return values.help ? 0 : 2
   }
   switch (command) {
+    case 'route': {
+      const eventFile = values.event ?? process.env.GITHUB_EVENT_PATH
+      const eventName = values['event-name'] ?? process.env.GITHUB_EVENT_NAME
+      if (!eventFile || !eventName)
+        throw new UsageError('route needs --event and --event-name, or GITHUB_EVENT_PATH and GITHUB_EVENT_NAME')
+      let routed
+      try {
+        routed = route(eventName, JSON.parse(readFileSync(eventFile, 'utf8')))
+      }
+      catch (error) {
+        if (error instanceof RouteError)
+          throw new UsageError(error.message)
+        throw error
+      }
+      output('run', String(routed.run))
+      if (routed.run) {
+        output('number', String(routed.number))
+        output('playbook', routed.playbook)
+        output('trigger', routed.trigger)
+        output('comment', routed.comment === undefined ? '' : String(routed.comment))
+        log(`run: ${routed.playbook} on #${routed.number} (${routed.trigger})`)
+      }
+      else {
+        log(`no run: ${routed.reason}`)
+      }
+      out(routed)
+      return 0
+    }
+    case 'context': {
+      const playbook = required('playbook')
+      if (!PLAYBOOK.test(playbook))
+        throw new UsageError(`--playbook must be a playbook name, not ${playbook}`)
+      const defaultSha = required('default-sha')
+      if (!/^[0-9a-f]{40}$/.test(defaultSha))
+        throw new UsageError('--default-sha must be a full commit SHA')
+      const context = await writeContext({
+        github: github().github,
+        number: positive('number'),
+        playbook,
+        defaultSha,
+        out: resolve(required('out')),
+        ...(values.comment ? { comment: positive('comment') } : {}),
+      })
+      output('base', context.base)
+      output('rework', String(context.rework))
+      if (context.omitted > 0)
+        log(`issue.md leaves out the ${context.omitted} oldest comment(s) for size`)
+      out(context)
+      return 0
+    }
     case 'validate': {
       if (!file)
         throw new UsageError('validate needs a result.json')
@@ -125,7 +204,19 @@ async function main(): Promise<number> {
       if (!file)
         throw new UsageError('playbook needs a name')
       const pack = resolve(required('pack'))
-      const playbook = resolvePlaybook(file, { pack, dir: resolve(values.dir ?? '.') })
+      let playbook
+      try {
+        playbook = resolvePlaybook(file, { pack, dir: resolve(values.dir ?? '.') })
+      }
+      catch (error) {
+        // The repository cannot run it: the workflow reports this on the issue instead of starting the agent.
+        if (!(error instanceof PlaybookError))
+          throw error
+        const message = error.message.replace(/[\r\n]+/g, ' ')
+        output('error', message)
+        log(message)
+        return 1
+      }
       if (values.prompt)
         writeFileSync(resolve(values.prompt), runPrompt(playbook, pack))
       output('evidence', playbook.evidence)
@@ -142,17 +233,20 @@ async function main(): Promise<number> {
       return 0
     }
     case 'apply': {
-      const token = process.env.GH_TOKEN
-      const repository = process.env.GITHUB_REPOSITORY
-      if (!token || !repository)
-        throw new UsageError('apply needs GH_TOKEN and GITHUB_REPOSITORY in the environment')
+      const { github: client, repository, token } = github()
+      const removeLabels = values['remove-label'] ?? []
+      for (const label of removeLabels) {
+        if (!/^agent:[a-z0-9][a-z0-9-]{0,43}$/.test(label))
+          throw new UsageError(`--remove-label takes agent:<name> labels, not ${label}`)
+      }
       const applied = await apply({
         ...checkOptions(),
-        github: new GitHub({ token, repository }),
+        github: client,
         repository,
         token,
         botLogin: required('bot-login'),
         runUrl: values['run-url'],
+        removeLabels,
         log,
       })
       if (applied.pullRequest)

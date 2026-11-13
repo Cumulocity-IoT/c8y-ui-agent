@@ -61,28 +61,15 @@ The guard splits a shell command line into simple commands at `;`, `&`, `&&`, `|
 
 ## A run
 
-The workflow (`run.yml`, next) prepares a run directory outside the checkout and starts Claude Code in the checkout:
+The reusable workflow ([workflow.md](workflow.md)) prepares a run directory outside the checkout and starts Claude Code in the checkout, with the pack and the repository's skills as plugins:
 
 ```
+<run>/system.md          run.md and the playbook, from c8y-ui-apply playbook in the context job
 <run>/context/issue.md   the issue thread, from the context job
-<run>/context/…          related issues
+<run>/context/request.md the comment that started the run, if one did
 <run>/profile.json       c8y-ui-workbench profile
+<run>/mcp.json           the servers c8y-ui-workbench and c8y-web-sdk-knowledge
 <run>/result.json        written by the agent
 ```
 
-```sh
-c8y-ui-apply playbook "$PLAYBOOK" --pack "$PACK" --dir "$DEFAULT_BRANCH_CHECKOUT" --prompt "$RUN/system.md"
-claude -p "Playbook: $PLAYBOOK
-Issue: #$NUMBER in $REPOSITORY
-Base: $BASE
-Run directory: $RUN
-Rounds: $ROUNDS" \
-  --append-system-prompt-file "$RUN/system.md" \
-  --plugin-dir "$PACK" \
-  --strict-mcp-config --mcp-config "$RUN/mcp.json" \
-  --add-dir "$RUN"
-```
-
-`mcp.json` names the servers `c8y-ui-workbench` and `c8y-web-sdk-knowledge`: the verifier's tool list uses these names. `c8y-ui-apply` is on the `PATH`, for `validate`. Settings sources, permissions, and the egress allowlist come with `run.yml`.
-
-The task message is plain text with the five fields that `run.md` describes. The issue thread is never in the prompt: it is a file that `run.md` marks as untrusted.
+The task message is plain text with the five fields that `run.md` describes: playbook, issue, base, run directory, rounds. The issue thread is never in the prompt: it is a file that `run.md` marks as untrusted. `mcp.json` names the servers as the verifier's tool list expects. `c8y-ui-apply` is on the `PATH`, for `validate`.

@@ -27,7 +27,7 @@ Pull requests are squash-merged. The pull request title becomes the commit on `m
 | `feat!: …` (any type with `!`) | major (from 0.x that is 1.0.0, so only when you mean it) |
 | `docs: …`, `chore: …`, `ci: …`, `test: …`, `refactor: …`, `build: …`, `style: …` | none |
 
-Scopes: `workbench`, `apply`, later `pack` and `workflow`. While the version is 0.x, breaking changes can go out as `feat`. The release notes list only commit titles, so name the break in the title: `feat(workbench): rename preview_up to preview (breaking)`.
+Scopes: `workbench`, `apply`, `pack`, `workflow`. While the version is 0.x, breaking changes can go out as `feat`. The release notes list only commit titles, so name the break in the title: `feat(workbench): rename preview_up to preview (breaking)`.
 
 ## Releases
 
@@ -35,7 +35,7 @@ Scopes: `workbench`, `apply`, later `pack` and `workflow`. While the version is 
 
 - `main` publishes the packages under `packages/` (`@cumulocity-iot/c8y-ui-workbench`, `@cumulocity-iot/c8y-ui-apply`) to GitHub Packages under the `latest` dist-tag, all with the same version. `next` publishes prereleases under `next`.
 - semantic-release sets the version in each `packages/*/package.json` only inside the CI run (the repository keeps `0.0.0-development`), then runs `pnpm publish`. It tags `v<version>` and creates a GitHub release whose notes are the changelog. Nothing is committed back.
-- The reusable workflow and the agent pack are versioned by the same tag. With the reusable workflow (phase 3), a release step moves the major tag (`v1`, …) to each new release, and callers reference it (`run.yml@v1`). While the version is 0.x, callers pin an exact tag (`run.yml@v0.4.2`).
+- The reusable workflow and the agent pack are versioned by the same tag: `run.yml` installs the packages of the release tag that points to its own commit ([docs/workflow.md](docs/workflow.md#versions)). While the version is 0.x, callers pin an exact tag (`run.yml@v0.7.0`). From 1.0, a release step moves the major tag (`v1`, …) to each new release, and callers reference it (`run.yml@v1`).
 - Preview locally: `pnpm release:dry-run` (needs the GitHub remote and a `GITHUB_TOKEN` in the environment).
 
 ## Repository setup
@@ -45,7 +45,7 @@ Done on 2026-10-29. Recheck after changes to the organization's defaults.
 - **Versions:** the tag `v0.0.0` on the initial commit starts the version line, so the first `feat` releases 0.1.0 instead of 1.0.0.
 - **Merging:** squash merging only; commit title from the pull request title, empty commit body; branches are deleted after merge.
 - **Ruleset "Protect main":** pull requests required (0 approvals, review threads resolved), squash only, linear history, no force push or deletion. Required checks, on an up-to-date branch: *Build, typecheck, test* (`ci.yml`) and *conventional-commit* (`pr-title.yml`). Renaming either job blocks every pull request until the ruleset is updated.
-- **Ruleset "Protect release tags":** tags `v*` cannot be moved or deleted. Creating them stays open for semantic-release. The step that moves the major tag (phase 3) needs a bypass.
+- **Ruleset "Protect release tags":** tags `v*` cannot be moved or deleted. Creating them stays open for semantic-release. The step that moves the major tag (from 1.0) needs a bypass.
 - **Actions:** the default `GITHUB_TOKEN` is read-only, and Actions cannot approve pull requests; each workflow declares its permissions. Runs for pull requests from any external contributor need a maintainer's approval: review changes to `.github/` before approving, because the run can read internal packages (D7).
 - **Security:** secret scanning with push protection, and private vulnerability reporting.
 

@@ -1,6 +1,6 @@
 # Registering the GitHub App
 
-The App "C8Y UI Agent" gives the agent its bot identity and the short-lived tokens of the context and apply jobs (D2, D7, D9). An owner of the `Cumulocity-IoT` organization registers it once. Not done yet.
+The App "C8Y UI Agent" gives the agent its bot identity and the short-lived tokens of the apply job (D2, D7, D9). An owner of the `Cumulocity-IoT` organization registers it once. Not done yet.
 
 ## Register
 
@@ -18,14 +18,14 @@ Repository permissions; everything else stays "No access":
 
 | Permission | Access | Used by |
 |---|---|---|
-| Contents | Read and write | Apply job: push `agent/*` branches. Context job: read. |
-| Issues | Read and write | Apply job: status comment, `agent:*` labels. Context job: read the thread. |
-| Pull requests | Read and write | Apply job: open and update pull requests, comment. Context job: read. |
+| Contents | Read and write | Apply job: push `agent/*` branches |
+| Issues | Read and write | Apply job: status comment, `agent:*` labels |
+| Pull requests | Read and write | Apply job: open and update pull requests, comment |
 | Metadata | Read-only | Required by GitHub |
 
 No Workflows permission: GitHub then rejects any push from the App that changes `.github/workflows`, whatever the apply job's checks say. No organization or account permissions, no event subscriptions.
 
-Each job asks for less than the App has: `actions/create-github-app-token` with `permission-*` inputs (see [result.md](result.md#the-apply-job)). The context job gets read-only tokens; the apply job gets write access only after its check passed.
+The apply job asks for less than the App has: `actions/create-github-app-token` with `permission-*` inputs (see [result.md](result.md#the-apply-job) and `run.yml`), and gets write access to contents only after its check passed. The context job reads the issue thread with the run's job token, not the App's (D19).
 
 ## After registering
 
