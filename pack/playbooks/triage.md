@@ -5,7 +5,7 @@ result: comment
 ---
 Outcomes: `comment`, or `failed`. Triage makes no commits and leaves the checkout as it found it.
 
-1. **Read the issue.** Decide what it is: a bug report, a feature request, a question, or a duplicate of an issue in `context/`. For a question, answer it from the code and the Web SDK knowledge server, then go to step 5.
+1. **Read the issue.** Decide what it is: a bug report, a feature request, a question, or a duplicate of an issue the thread names. For a question, answer it from the code and the Web SDK knowledge server, then go to step 5.
 2. **Find the app.** Map the issue to one of the apps in `profile.json` (`list_apps`). If no app matches, or several do and the issue does not say which, ask in the result.
 3. **Reproduce a bug** on the emulator, with the steps from the issue:
    - Start a preview (`preview_up`) and take screenshots (`screenshot`) of each step and of the reported state.

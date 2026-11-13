@@ -159,3 +159,26 @@ The pack (`pack/`, [pack.md](pack.md)) holds the run prompt, the built-in playbo
 Rejected: playbook resolution in the workbench, which the filter, context, and apply jobs do not install; the agent reading playbook files itself, which lets the agent's runner decide the evidence level; a published pack package.
 
 Decided on 2026-11-13.
+
+## D19: The reusable workflow pins itself by its commit, reads with the job token, and loads repository skills as a plugin
+
+[`run.yml`](../.github/workflows/run.yml) has four jobs: filter, context, agent, apply ([workflow.md](workflow.md)).
+
+- **Versions from the workflow's commit:** the pack is checked out at `job.workflow_sha`, and the packages are those of the release tag that points to that commit. A caller pins one tag and gets both. The input `package-version` overrides the packages for testing a branch. This answers the open point of [result.md](result.md): nothing in `run.yml` names its own version, and releases commit nothing back.
+- **Decisions in code:** `c8y-ui-apply route` (which event starts which run) and `c8y-ui-apply context` (the thread as files, the base) are in the apply package, with unit tests, like playbook resolution (D18). The filter job installs the package; the comments that cannot concern the agent end in the job's `if` without a runner.
+- **The context job reads with the job token:** the caller grants `issues: read` and `pull-requests: read`, and the context job reads the thread with `github.token`. The App's key reaches only the apply job.
+- **Repository skills as a plugin:** Claude Code starts with `--setting-sources user`, which skips the repository's settings and hooks, and also its `.claude/skills` (verified with Claude Code 2.1.323). The workflow copies `.claude/skills/*` and `.c8y-agent/skills/*` into a plugin `repository` and loads it with `--plugin-dir`. Skills are instructions; the tools stay those the workflow allows.
+- **Permissions:** `dontAsk` with the shell allowed (D18), plus file tools, subagents, skills, and the two MCP servers; no web fetch or search.
+- **Errors before the agent:** a playbook the repository cannot run ends the run in the context job; the apply job posts the error as a `failed` result, with a token that can only comment and label.
+- **Time:** the agent's step has the input's time limit, and the job 30 minutes more, so a stopped agent's commits are still bundled and the apply job reports them. An agent job that a newer trigger cancelled while it waited gets no apply job.
+- **Untrusted text as quotes:** `issue.md` quotes every body, so a comment cannot pass for another one; `request.md` holds only the words after the command.
+
+Not yet: the egress allowlist. Harden-Runner blocks egress only in its paid tier on private repositories. GitHub's native egress firewall (technical preview, `ubuntu-24.04-firewall`) runs outside the VM, so root in the job cannot disable it, but it reads its policy from the repository that contains the workflow, and the preview does not say which repository counts for a reusable workflow. The first run in a test repository decides between them. Until then, the model key on the agent's runner is exposed to an instruction in an issue; the log, the summary, the artifact, and comments stay channels with an allowlist too, so a spend-limited, rotated key is the control (workflow.md, Limits).
+
+Rejected:
+
+- Installing the packages at a version written into `run.yml`: a release would have to commit the version back, or the workflow would lag one release behind.
+- A composite action for the repeated install steps: a reusable workflow cannot call an action from its own repository at its own commit without naming the ref.
+- An App token in the context job, as the specification has it: the job token reads the thread as well, and keeps the App's key out of one more job.
+
+Decided on 2026-11-13.

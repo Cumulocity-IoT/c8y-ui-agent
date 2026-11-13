@@ -2,7 +2,7 @@
   "name": "@cumulocity-iot/c8y-ui-apply",
   "version": "0.0.0-development",
   "type": "module",
-  "description": "The C8Y UI Agent's trusted steps: resolve playbooks, validate an agent run's result file and git bundle in a fresh checkout, then write them to GitHub.",
+  "description": "The C8Y UI Agent's trusted steps: route events, write the issue context, resolve playbooks, validate an agent run's result file and git bundle in a fresh checkout, then write them to GitHub.",
   "author": "Cumulocity GmbH",
   "license": "Apache-2.0",
   "repository": {

@@ -1,6 +1,6 @@
 # Result file and apply job
 
-An agent run writes nothing to GitHub. Its job ends with two files, and a separate apply job, on a fresh runner, checks them and writes (D2). The package [`@cumulocity-iot/c8y-ui-apply`](../packages/apply) implements both ends; the reusable workflow (phase 3) runs it.
+An agent run writes nothing to GitHub. Its job ends with two files, and a separate apply job, on a fresh runner, checks them and writes (D2). The package [`@cumulocity-iot/c8y-ui-apply`](../packages/apply) implements both ends; the reusable workflow ([workflow.md](workflow.md)) runs it.
 
 | Job | Holds | Does |
 |---|---|---|
@@ -73,76 +73,20 @@ Exit codes: `check` 0 when it ran (step output `ok`: `true` or `false`), 2 when 
 
 ## The apply job
 
-The reusable workflow (phase 3) gets this job. `needs.context.outputs` are the trusted inputs.
+The apply job of [`run.yml`](../.github/workflows/run.yml) runs it ([workflow.md](workflow.md)). Its trusted inputs are the context job's outputs:
 
-```yaml
-apply:
-  needs: [context, agent]
-  if: ${{ !cancelled() && needs.context.result == 'success' }}   # also after a failed agent job
-  runs-on: ubuntu-latest
-  permissions:
-    contents: read
-    packages: read
-  env:
-    NUMBER: ${{ needs.context.outputs.number }}
-    PLAYBOOK: ${{ needs.context.outputs.playbook }}
-    PLAYBOOK_RESULT: ${{ needs.context.outputs.playbook-result }}
-    BASE: ${{ needs.context.outputs.base }}
-    DEFAULT_BRANCH: ${{ needs.context.outputs.default-branch }}
-  steps:
-    - uses: actions/checkout@v7
-      with: { path: repo, fetch-depth: 0, persist-credentials: false }
-    # No cache: the agent job can write the default branch's Actions caches.
-    - uses: actions/setup-node@v7
-      with: { node-version: 24, registry-url: https://npm.pkg.github.com, scope: '@cumulocity-iot' }
-    - run: npm install --ignore-scripts --no-save --prefix "$RUNNER_TEMP/apply" @cumulocity-iot/c8y-ui-apply@<version>
-      env: { NODE_AUTH_TOKEN: '${{ github.token }}' }
-    # The agent's files arrive after the tool is installed, outside the checkout.
-    - uses: actions/download-artifact@v8
-      continue-on-error: true            # no artifact: check reports the missing result.json
-      with: { name: agent-result, path: '${{ runner.temp }}/agent' }
-    - id: check
-      continue-on-error: true            # a crash leaves ok unset: the report token and apply still run
-      run: >-
-        "$RUNNER_TEMP/apply/node_modules/.bin/c8y-ui-apply" check --dir repo
-        --result "$RUNNER_TEMP/agent/result.json" --bundle "$RUNNER_TEMP/agent/agent.bundle"
-        --base "$BASE" --default-branch "$DEFAULT_BRANCH" --number "$NUMBER" --playbook "$PLAYBOOK" --playbook-result "$PLAYBOOK_RESULT"
-    # A passed check gets a token that can push; anything else only a token that can comment.
-    - id: write
-      if: steps.check.outputs.ok == 'true'
-      uses: actions/create-github-app-token@v3
-      with:
-        client-id: ${{ secrets.C8Y_UI_AGENT_CLIENT_ID }}
-        private-key: ${{ secrets.C8Y_UI_AGENT_APP_KEY }}
-        permission-contents: write
-        permission-pull-requests: write
-        permission-issues: write
-    - id: report
-      if: steps.check.outputs.ok != 'true'
-      uses: actions/create-github-app-token@v3
-      with:
-        client-id: ${{ secrets.C8Y_UI_AGENT_CLIENT_ID }}
-        private-key: ${{ secrets.C8Y_UI_AGENT_APP_KEY }}
-        permission-pull-requests: write
-        permission-issues: write
-    - run: >-
-        "$RUNNER_TEMP/apply/node_modules/.bin/c8y-ui-apply" apply --dir repo
-        --result "$RUNNER_TEMP/agent/result.json" --bundle "$RUNNER_TEMP/agent/agent.bundle"
-        --base "$BASE" --default-branch "$DEFAULT_BRANCH" --number "$NUMBER" --playbook "$PLAYBOOK" --playbook-result "$PLAYBOOK_RESULT"
-        --bot-login "$SLUG[bot]" --run-url "$RUN_URL"
-      env:
-        GH_TOKEN: ${{ steps.write.outputs.token || steps.report.outputs.token }}
-        SLUG: ${{ steps.write.outputs.app-slug || steps.report.outputs.app-slug }}
-        RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
-```
-
-Open for phase 3: how `run.yml` pins `<version>` to its own tag.
+1. A fresh checkout of the default branch with its history (`fetch-depth: 0`), no stored credentials, and no cache: the agent job can write the default branch's Actions caches.
+2. `c8y-ui-apply` installed with `--ignore-scripts`, at the release of the workflow (D19).
+3. The agent's artifact, downloaded after the install, outside the checkout. Without it, `check` reports the missing `result.json`.
+4. `check`, without a token. A crash leaves `ok` unset, so the job continues with the comment-only token.
+5. An App token from `actions/create-github-app-token` that can push (contents, pull requests, issues) only when `ok` is `true`; otherwise one that can only comment and label (pull requests, issues).
+6. `apply` with that token, the bot login `<app-slug>[bot]`, the run's URL, and `--remove-label agent:<playbook>` when a label started the run.
 
 ## Limits
 
 - The summary and the pull request body are the model's Markdown: they can mention people. Review and CI stay the gate for the code; the size limits bound the text.
 - The check reads which files changed, not what a lockfile resolves to: a changed lockfile with a changed manifest of its package can still point a dependency at another tarball. Review the lockfile diff of an agent pull request.
 - Commit authors and messages are the agent's: an author can name a maintainer. Only `[skip ci]` and similar directives are rejected.
-- The agent job holds the Actions runtime token of its run, which can upload artifacts and write Actions caches of the default branch. Artifacts from the run are untrusted anyway; workflows with secrets or write tokens must not restore caches that an agent run can write.
+- The agent job holds the Actions runtime token of its run and a read-only job token ([workflow.md](workflow.md), Limits). The runtime token can upload artifacts and write Actions caches of the default branch. Artifacts from the run are untrusted anyway; workflows with secrets or write tokens must not restore caches that an agent run can write.
 - A change to `package.json` scripts or the Cypress configuration passes the check. CI jobs with secrets need an environment with required reviewers for `agent/*` branches (D2).
-- The egress allowlist of the agent job belongs to the agent job, which the reusable workflow defines (phase 3).
+- The agent job's network is not restricted yet ([workflow.md](workflow.md), Not yet).

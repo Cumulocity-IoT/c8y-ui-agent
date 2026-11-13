@@ -95,6 +95,17 @@ describe('apply', () => {
     expect(calls[2]?.body).toEqual({ labels: [FAILED_LABEL] })
   })
 
+  it('removes the label that started the run, also when it rejects the result', async () => {
+    const { github, calls } = fakeGitHub()
+    await apply({ ...options({ version: 1, outcome: 'comment', summary: 'Triaged.' }, github), playbook: 'triage', removeLabels: ['agent:triage'] })
+    expect(calls.filter(c => c.method === 'DELETE').map(c => c.path)).toEqual(['/issues/12/labels/agent%3Atriage', '/issues/12/labels/agent%3Afailed'])
+
+    commit(r.agent, { '.github/workflows/x.yml': 'on: push\n' })
+    const rejected = fakeGitHub()
+    await apply({ ...options(PR, rejected.github), removeLabels: ['agent:fix'] })
+    expect(rejected.calls.map(c => `${c.method} ${c.path.split('?')[0]}`)).toEqual(['GET /issues/12/comments', 'POST /issues/12/comments', 'DELETE /issues/12/labels/agent%3Afix', 'POST /issues/12/labels'])
+  })
+
   it('does not force-push over a branch that appeared after the check\'s checkout', async () => {
     commit(r.agent, { 'src/app.ts': 'fixed\n' })
     const seed = join(r.root, 'seed')

@@ -22,6 +22,8 @@ export interface ApplyOptions extends CheckOptions {
   remote?: string
   /** Link to the workflow run, for the status comment. */
   runUrl?: string
+  /** Labels the run removes whatever its result, such as the playbook label that started it, so it can start again. */
+  removeLabels?: string[]
   log?: (line: string) => void
 }
 
@@ -79,6 +81,8 @@ async function reject(options: ApplyOptions, report: CheckReport, violations: Vi
   options.log?.(`rejected: ${violations.length} violation(s)`)
   try {
     const comment = await upsertStatus(options, rejection(violations, options.runUrl))
+    for (const label of options.removeLabels ?? [])
+      await options.github.removeLabel(options.number, label)
     await options.github.addLabels(options.number, [FAILED_LABEL])
     return { ok: false, report: { ...report, ok: false, violations }, comment }
   }
@@ -124,7 +128,7 @@ export async function apply(options: ApplyOptions): Promise<Applied> {
     }
     const add = [...new Set([...result.labels?.add ?? [], ...result.outcome === 'failed' ? [FAILED_LABEL] : []])]
     // A result that did not fail clears agent:failed from an earlier run, unless it adds it itself.
-    const remove = [...new Set([...result.labels?.remove ?? [], ...add.includes(FAILED_LABEL) ? [] : [FAILED_LABEL]])]
+    const remove = [...new Set([...result.labels?.remove ?? [], ...options.removeLabels ?? [], ...add.includes(FAILED_LABEL) ? [] : [FAILED_LABEL]])]
     for (const label of remove.filter(label => !add.includes(label)))
       await options.github.removeLabel(options.number, label)
     await options.github.addLabels(options.number, add)
@@ -148,6 +152,8 @@ export async function apply(options: ApplyOptions): Promise<Applied> {
         '',
         result.summary,
       ].join('\n') + footer(options.runUrl))
+      for (const label of options.removeLabels ?? [])
+        await options.github.removeLabel(options.number, label)
       await options.github.addLabels(options.number, [FAILED_LABEL])
     }
     catch (reportError) {
