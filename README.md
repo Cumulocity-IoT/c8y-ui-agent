@@ -26,6 +26,7 @@ docs/decisions.md     decisions taken and why
 docs/prove-regression.md  the rules of prove_regression
 docs/result.md        result.json and the apply job
 docs/github-app.md    registering the GitHub App
+docs/pilot-sessions.md  agent sessions on real issues, and what they changed
 ```
 
 Later phases add `pack/` (playbooks, skills, roles, hooks) and `.github/workflows/run.yml` (the reusable workflow that repositories call).
