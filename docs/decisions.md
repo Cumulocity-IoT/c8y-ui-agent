@@ -96,6 +96,8 @@ Rejected: switching the toolkit's issue loop to the workbench tools, as planned.
 
 Decided on 2026-11-05.
 
+The session ran on 2026-11-13 on toolkit issue #61: [pilot-sessions.md](pilot-sessions.md).
+
 ## D14: Every unexpected gap of a proof limits it to `observed`
 
 `prove_regression` counts every unexpected gap of its runs (`expected: false`), whichever tests the gap report names. Each run has its own emulator and runs only the tested specs, so their tests, hooks and app start sent every request of the run. The gap report's test names (SDK 2.3) help find a gap's cause; they do not change the verdict.
