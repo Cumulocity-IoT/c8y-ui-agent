@@ -3,18 +3,21 @@
 import { basename, dirname, resolve } from 'node:path'
 import { parseArgs } from 'node:util'
 import { check } from './check'
+import { discover, targetFromProfile } from './discover'
 import { PreviewError, Previews } from './preview'
 import { proveRegression } from './regression'
 import { checkLanguage, Screenshots, VIEWPORT } from './screenshot'
 import { serve, version } from './server'
 import { listApps, WorkbenchError } from './target'
 import type { AuthMode, Target } from './target'
+import type { Profile } from './discover'
 import { errorMessage } from './util'
 
 const USAGE = `c8y-ui-workbench ${version}
 
 Usage:
   c8y-ui-workbench [mcp] [options]                  MCP server on stdio
+  c8y-ui-workbench profile [options]                the repository profile: apps, commands, e2e setup, world, versions
   c8y-ui-workbench apps [options]                   list the apps
   c8y-ui-workbench preview <app> [options]          serve an app until Ctrl+C
   c8y-ui-workbench screenshot <app> [options] [--path <route>] [--wait-for <css>] [--selector <css>] [--full-page]
@@ -22,12 +25,12 @@ Usage:
   c8y-ui-workbench check <app> [options] [--spec <file>]…
   c8y-ui-workbench prove-regression <app> [options] [--base <commit>] [--spec <file>]… [--test <name>]…
 
-Options:
+Options (default: what the profile says, from .c8y-agent/config.yml or detected):
   --repo <dir>          the repository (default: the working directory)
-  --world <file>        world file for the emulator, relative to the repository (required for all but apps)
-  --e2e-root <dir>      Cypress project directory, relative to the repository (default: the repository)
+  --world <file>        world file for the emulator, relative to the repository
+  --e2e-root <dir>      Cypress project directory, relative to the repository
   --e2e-config <file>   Cypress config file, relative to the e2e root; {app} is replaced by the app name
-  --e2e-auth <mode>     emulator login mode in e2e runs: open (default) or login
+  --e2e-auth <mode>     emulator login mode in e2e runs: open or login
   --e2e-env <K=V>       more Cypress environment, repeatable; {devUrl} and {mockUrl} are replaced
   --screenshots <dir>   directory for screenshots (default: a new private directory in the temp directory)
 `
@@ -57,7 +60,12 @@ const { values, positionals } = parseArgs({
   },
 })
 
-function target(): Target {
+/** The profile, with an explicit e2e root as its input: the config pattern, login mode and world follow it. */
+function profile(): Profile {
+  return discover(resolve(values.repo ?? '.'), { e2eRoot: values['e2e-root'] })
+}
+
+function target(p: Profile = profile()): Target {
   const auth = values['e2e-auth']
   if (auth !== undefined && auth !== 'open' && auth !== 'login')
     throw new WorkbenchError(`--e2e-auth must be open or login, not ${auth}`)
@@ -67,20 +75,19 @@ function target(): Target {
       throw new WorkbenchError(`--e2e-env takes KEY=VALUE, not ${pair}`)
     return [pair.slice(0, at), pair.slice(at + 1)]
   }))
-  return {
-    repo: resolve(values.repo ?? '.'),
-    world: values.world ?? '',
+  return targetFromProfile(resolve(values.repo ?? '.'), p, {
+    world: values.world,
     e2eRoot: values['e2e-root'],
     e2eConfig: values['e2e-config'],
     e2eAuth: auth as AuthMode | undefined,
-    e2eEnv: env,
+    e2eEnv: Object.keys(env).length > 0 ? env : undefined,
     screenshots: values.screenshots && resolve(values.screenshots),
-  }
+  })
 }
 
 function requireWorld(t: Target): Target {
   if (!t.world)
-    throw new WorkbenchError('--world is required')
+    throw new WorkbenchError('no world file: set world.file in .c8y-agent/config.yml, add a c8y-ui.json with a world, or give --world')
   return t
 }
 
@@ -118,8 +125,13 @@ async function main(): Promise<void> {
   }
   const progress = (line: string): void => void process.stderr.write(`${line}\n`)
   switch (command) {
-    case 'mcp':
-      return serve(target())
+    case 'mcp': {
+      const p = profile()
+      return serve(target(p), p)
+    }
+    case 'profile':
+      process.stdout.write(`${JSON.stringify(profile(), null, 2)}\n`)
+      return
     case 'apps':
       process.stdout.write(`${JSON.stringify(listApps(target().repo), null, 2)}\n`)
       return

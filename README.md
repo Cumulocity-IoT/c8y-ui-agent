@@ -25,6 +25,7 @@ packages/apply/       @cumulocity-iot/c8y-ui-apply: result.json, the agent's git
 docs/decisions.md     decisions taken and why
 docs/prove-regression.md  the rules of prove_regression
 docs/result.md        result.json and the apply job
+docs/discovery.md     the repository profile and its corrections in .c8y-agent/config.yml
 docs/github-app.md    registering the GitHub App
 docs/pilot-sessions.md  agent sessions on real issues, and what they changed
 ```

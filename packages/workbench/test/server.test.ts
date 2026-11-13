@@ -25,13 +25,21 @@ describe('MCP server', () => {
 
   it('lists the tools', async () => {
     const { tools } = await client.listTools()
-    expect(tools.map(t => t.name).sort()).toEqual(['check', 'list_apps', 'preview_down', 'preview_log', 'preview_up', 'prove_regression', 'screenshot'])
+    expect(tools.map(t => t.name).sort()).toEqual(['check', 'list_apps', 'preview_down', 'preview_log', 'preview_up', 'profile', 'prove_regression', 'screenshot'])
     expect(tools.find(t => t.name === 'prove_regression')?.inputSchema.required).toEqual(['app'])
   })
 
   it('lists the apps', async () => {
     const result = await client.callTool({ name: 'list_apps', arguments: {} })
     expect(JSON.parse((result.content as Array<{ text: string }>)[0]!.text)).toEqual([{ name: repo.split('/').pop(), dir: '' }])
+  })
+
+  it('returns the profile and the settings without the repository path', async () => {
+    const result = await client.callTool({ name: 'profile', arguments: {} })
+    const { profile, settings } = JSON.parse((result.content as Array<{ text: string }>)[0]!.text)
+    expect(profile.apps).toEqual([expect.objectContaining({ name: repo.split('/').pop(), dir: '' })])
+    expect(profile.unknown).toEqual(expect.arrayContaining(['versions.webSdk', 'versions.angular']))
+    expect(settings).toEqual({ world: 'mock/world.json' })
   })
 
   it('reports errors as tool errors', async () => {

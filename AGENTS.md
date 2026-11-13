@@ -7,6 +7,7 @@ A GitHub App that works on Cumulocity Web SDK apps and plugins with Claude Code.
 - [docs/decisions.md](docs/decisions.md): decisions taken and why. Add a decision when you take one.
 - [docs/prove-regression.md](docs/prove-regression.md): the rules of `prove_regression`.
 - [docs/result.md](docs/result.md): `result.json`, the bundle, and the apply job's rules.
+- [docs/discovery.md](docs/discovery.md): the repository profile and the `config.yml` keys the workbench reads.
 
 Keep knowledge in the repository, not in a private agent memory.
 
@@ -15,6 +16,7 @@ Keep knowledge in the repository, not in a private agent memory.
 ```
 packages/workbench/   @cumulocity-iot/c8y-ui-workbench: MCP server on the Cumulocity UI SDK
   src/target.ts       the repository and its apps (angular.json, detectConfig of the SDK)
+  src/discover.ts     the repository profile (docs/discovery.md); src/config.ts the keys of .c8y-agent/config.yml it reads
   src/preview.ts      preview_up: startDev of the SDK, one dev server and emulator per preview
   src/tests.ts        one e2e run: runE2e of the SDK, per-test results from reporter/index.cjs
   src/screenshot.ts   screenshot: a preview's page in headless Chromium (Playwright), with errors and gaps

@@ -16,6 +16,11 @@ export interface Target {
   e2eRoot?: string
   /** Cypress config file, relative to `e2eRoot`; `{app}` is replaced by the app name. */
   e2eConfig?: string
+  /**
+   * The pattern was detected, not configured: an app without its config file uses the e2e root's default config. A
+   * configured pattern is strict, so that a typo fails instead of running every spec.
+   */
+  e2eConfigOptional?: boolean
   /** Login mode of the emulator in e2e runs (default `open`). Previews always use `open`. */
   e2eAuth?: AuthMode
   /** More environment for Cypress; `{devUrl}` and `{mockUrl}` are replaced with the run's URLs. */
@@ -77,7 +82,10 @@ export function resolveApp(repo: string, name: string): App {
 
 /** The Cypress config file for an app, relative to the e2e root. */
 export function e2eConfigFile(target: Target, app: App): string | undefined {
-  return target.e2eConfig?.replaceAll('{app}', app.name)
+  const file = target.e2eConfig?.replaceAll('{app}', app.name)
+  if (file && target.e2eConfigOptional && !existsSync(join(target.repo, target.e2eRoot ?? '.', file)))
+    return undefined
+  return file
 }
 
 /** The world file as an absolute path; it must exist. */

@@ -8,12 +8,14 @@ import type { RequestHandlerExtra } from '@modelcontextprotocol/sdk/shared/proto
 import type { CallToolResult, ServerNotification, ServerRequest } from '@modelcontextprotocol/sdk/types.js'
 import { z } from 'zod'
 import { check } from './check'
+import { discover } from './discover'
 import { PreviewError, Previews } from './preview'
 import { discardActiveProofs, proveRegression } from './regression'
 import { Screenshots, tooLargeToInline, VIEWPORT } from './screenshot'
 import { Slot } from './slot'
 import { listApps } from './target'
 import type { Target } from './target'
+import type { Profile } from './discover'
 import { errorMessage } from './util'
 
 // Read at runtime: semantic-release sets the version after the build.
@@ -36,7 +38,8 @@ export interface Workbench {
   stopRuns: () => Promise<void>
 }
 
-export function createServer(target: Target): Workbench {
+/** `profile`: the profile the target was taken from, returned by the `profile` tool; default: discovered on each call. */
+export function createServer(target: Target, profile?: Profile): Workbench {
   const server = new McpServer({ name: 'c8y-ui-workbench', version })
   const previews = new Previews(target)
   const screenshots = new Screenshots(target.screenshots)
@@ -62,6 +65,23 @@ export function createServer(target: Target): Workbench {
     description: 'The apps of the repository that preview_up, check and prove_regression take: Angular projects with a serve target, by folder name.',
     annotations: { readOnlyHint: true },
   }, async () => json(listApps(target.repo)))
+
+  server.registerTool('profile', {
+    title: 'Repository profile',
+    description: 'What discovery found in the repository, corrected by .c8y-agent/config.yml: package manager, Node, Web SDK and Angular versions, '
+      + 'the apps with their package scripts (test, build, e2e), the repository\'s lint and test commands, the e2e (Cypress) setup, the world file, '
+      + 'instruction files and skills. "unknown" lists what it could not settle. "settings" are what preview_up, check and prove_regression use: '
+      + 'the profile with the workbench\'s options applied, as of the server\'s start.',
+    annotations: { readOnlyHint: true },
+  }, async () => {
+    try {
+      const { repo: _repo, screenshots: _screenshots, ...settings } = target
+      return json({ profile: profile ?? discover(target.repo), settings })
+    }
+    catch (error) {
+      return failure(error)
+    }
+  })
 
   server.registerTool('preview_up', {
     title: 'Start a preview',
@@ -178,8 +198,8 @@ export function createServer(target: Target): Workbench {
   return { server, previews, screenshots, stopRuns }
 }
 
-export async function serve(target: Target): Promise<void> {
-  const { server, previews, screenshots, stopRuns } = createServer(target)
+export async function serve(target: Target, profile?: Profile): Promise<void> {
+  const { server, previews, screenshots, stopRuns } = createServer(target, profile)
   let closing = false
   const shutdown = async (): Promise<void> => {
     if (closing)

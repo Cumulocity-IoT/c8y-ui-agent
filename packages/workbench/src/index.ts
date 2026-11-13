@@ -1,5 +1,9 @@
 // The workbench as a library: the same operations as the MCP tools.
 export { check, checkResult } from './check'
+export { CONFIG_FILE, readAgentConfig } from './config'
+export type { AgentConfig } from './config'
+export { discover, targetFromProfile } from './discover'
+export type { DiscoverOptions, Profile, ProfileApp, TargetOverrides } from './discover'
 export type { CheckOptions, CheckResult } from './check'
 export { evaluate } from './evaluate'
 export type { EvaluateOptions, Evaluation, TestVerdict, Verdict } from './evaluate'
