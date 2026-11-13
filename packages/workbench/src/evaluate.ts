@@ -29,7 +29,7 @@ export interface Evaluation {
   /** The tests that prove the change. */
   proving: string[]
   tests: TestVerdict[]
-  /** Unexpected gaps of all runs that concern a tested spec, or cannot be attributed. */
+  /** Unexpected gaps of all runs, with the tests that sent them when the gap report names them. */
   gaps: GapRecord[]
 }
 
@@ -39,17 +39,6 @@ const outcome = (test: TestResult | undefined): string => {
   if (test.state === 'failed')
     return test.failedIn === 'hook' ? `failed in ${test.hook ?? 'a'} hook` : 'failed'
   return test.attempts && test.attempts > 1 ? `${test.state} on attempt ${test.attempts}` : test.state
-}
-
-/**
- * Whether a gap concerns a tested spec: the gap report attributes it to one of the spec's tests or hooks
- * (`<spec> › …`), or to no test at all (a repository whose Cypress support file does not report tests to the
- * emulator). Any test of a spec can set up state that its other tests depend on, so the whole spec counts.
- */
-export function gapTouches(gap: GapRecord, spec: string): boolean {
-  if (!gap.tests || gap.tests.length === 0)
-    return true
-  return gap.tests.some(name => name.startsWith(`${spec} › `))
 }
 
 const unexpected = (run: TestRun): GapRecord[] => run.gaps.filter(gap => !gap.expected)
@@ -123,9 +112,11 @@ export function evaluate(base: TestRun, changes: TestRun[], options: EvaluateOpt
     tests.push(verdict)
   }
 
-  // Unexpected gaps of any run that concern a tested spec.
-  const specs = [...new Set([...options.specs, ...tests.map(t => t.spec)])]
-  const gaps = [...new Set([base, ...changes].flatMap(unexpected).filter(gap => specs.some(spec => gapTouches(gap, spec))))]
+  // Every unexpected gap counts. A proof runs only the tested specs, so their tests sent every request of the runs;
+  // a test of a spec can set up state that its other tests depend on, and the requests outside tests (app start,
+  // hooks) belong to the specs too. Filtering gaps by the names in the gap report would only hide gaps whose test
+  // names differ from the reporter's, and turn `observed` into `regression`.
+  const gaps = [base, ...changes].flatMap(unexpected)
   const proving = tests.filter(t => t.proves).map(t => t.id)
   if (named) {
     for (const t of tests.filter(t => !t.proves))
@@ -138,12 +129,9 @@ export function evaluate(base: TestRun, changes: TestRun[], options: EvaluateOpt
     return { verdict: 'not-proven', reasons, proving: [], tests, gaps }
 
   if (gaps.length > 0) {
-    const unattributed = gaps.some(gap => !gap.tests?.length)
     return {
       verdict: 'observed',
-      reasons: [unattributed
-        ? 'the emulator could not answer some requests, and the gap report does not attribute them to tests (the Cypress support file needs @cumulocity-iot/ui-sdk/cypress from SDK 2.3): a gap may explain the outcome'
-        : 'the emulator could not answer requests of the tested specs: a gap may explain the outcome'],
+      reasons: ['the emulator could not answer requests of the tested specs (see gaps): a gap may explain the outcome'],
       proving,
       tests,
       gaps,

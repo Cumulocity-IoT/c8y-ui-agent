@@ -10,7 +10,7 @@
 4. **Two checkouts, built the same way.** Two git worktrees of the base commit outside the repository (git hooks off): the base with the change's test files copied in, the change with all changed files. Each gets a fresh install (`pnpm install --frozen-lockfile --prefer-offline`, or `npm ci`). Files that git ignores (`cypress.env.json`, `.env`, local fixtures) reach neither side, so they cannot make a test fail on one side only. The repository's checkout is not modified.
 5. **Specs.** The `specs` argument, by default the changed spec files. Cypress runs only specs that match the `specPattern` of the Cypress config, so a new spec may need a config change, which is a test file too.
 6. **Three runs** on the emulated tenant of the Cumulocity UI SDK (`runE2e`, `ng serve`), each with its own ports: the base and the first change run at the same time, then a second change run. The second change run is skipped when the first round decides: a run did not complete, or no test failed on the base in its own body.
-7. **Results.** A Cypress reporter (`reporter/index.cjs`, set with `CYPRESS_REPORTER`, which overrides the reporter of the repository's Cypress config file) records each test: passed, failed in its body, failed in a hook, pending, or skipped, and the attempts. The emulator's gap report lists the requests it could not answer as a tenant would, with the tests that sent them.
+7. **Results.** A Cypress reporter (`reporter/index.cjs`, set with `CYPRESS_REPORTER`, which overrides the reporter of the repository's Cypress config file) records each test: passed, failed in its body, failed in a hook, pending, or skipped, and the attempts. The emulator's gap report lists the requests it could not answer as a tenant would, with the tests that sent them when the Cypress support file reports tests (see the rules).
 
 One proof runs at a time per workbench. Cancelling it (MCP cancellation, SIGINT, SIGTERM, or the client disconnecting) stops the dev servers and Cypress, deregisters both worktrees at once (rename, `git worktree prune`) and deletes their files in a detached process, so that cleanup survives a client that kills the server seconds after disconnecting. The delete covers the temp directory under both names, in case a step that was still running recreated it, and starts before the prune. Setup steps that cannot be cancelled check for cancellation between them. Each proof writes its process id into its temp directory; a later proof removes the worktrees of proofs whose process is gone, and discarded temp directories whose delete never started.
 
@@ -18,8 +18,8 @@ One proof runs at a time per workbench. Cancelling it (MCP cancellation, SIGINT,
 
 | Verdict | Meaning |
 |---|---|
-| `regression` | The tests fail on the base in their own body, pass in both change runs on the first attempt, and no unexpected emulator gap concerns a tested spec. |
-| `observed` | The same outcomes, but an unexpected emulator gap concerns a tested spec, so the gap may explain them. The change is observed, not proven. |
+| `regression` | The tests fail on the base in their own body, pass in both change runs on the first attempt, and the emulator answered every request of the runs (no unexpected gap). |
+| `observed` | The same outcomes, but the emulator could not answer a request in one of the runs (an unexpected gap), so the gap may explain them. The change is observed, not proven. |
 | `not-proven` | The tests do not show the change: see `reasons`. |
 | `inconclusive` | A run did not complete: a side does not build, installation failed, or Cypress reported no tests. |
 
@@ -30,7 +30,7 @@ Rules, each with a reason in the result:
 - **Every test of the specs must pass in every change run.** A test that fails in one change run and passes in the other, or passes only on a retry, is flaky.
 - **Every spec must report tests in every change run**, and Cypress' exit code (its count of failures) must not exceed the failed tests: a spec that does not load reports no tests but counts as a failure.
 - With `tests`, **every named test** must prove the change; without, at least one test of the specs must.
-- A **gap concerns a tested spec** when the gap report attributes it to any test or hook of the spec (`<spec> › …`), or to no test at all. A proof runs only the tested specs, so every gap of its runs concerns them, and an unexpected gap gives `observed` with or without attribution. The attribution (`gaps[].tests`) needs the Cypress support hooks of `@cumulocity-iot/ui-sdk/cypress` from SDK 2.3, with `Cypress.env('C8Y_MOCK_URL')` set; it shows which tests sent each gap.
+- **Every unexpected gap** of the base run or a change run gives `observed`. A proof runs only the tested specs, so their tests, hooks and app start sent every request of the runs. The gap report lists the tests that sent each gap (`gaps[].tests`) when the Cypress support file imports `@cumulocity-iot/ui-sdk/cypress` from SDK 2.3 and `Cypress.env('C8Y_MOCK_URL')` is set; the list helps find the cause and does not change the verdict.
 - **Expected gaps** (`expected: true`: requests a fresh tenant answers with 404 too) are ignored.
 
 ## Test names

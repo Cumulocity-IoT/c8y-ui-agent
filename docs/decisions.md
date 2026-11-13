@@ -90,11 +90,17 @@ Phase 1 ends with the four workbench tools (`preview_up`, `screenshot`, `check`,
 
 What the switch would have tested, an agent that works a whole issue with the tools, gets a cheaper check before the phase 3 playbooks are written: one Claude Code session in the pilot worktree, with the workbench as its MCP server, works one issue. Unclear tool descriptions, oversized results and misread statuses become workbench changes.
 
-The toolkit runs SDK 2.3.3 since its pull request #117, so its gap reports name the tests behind each gap. On 2026-11-06, the pilot proof, rebased onto that version, returned `regression`.
+The toolkit runs SDK 2.3.3 since its pull request #117, so its gap reports name the tests behind each gap. On 2026-11-06, the pilot proof, rebased onto that version, returned `regression`: each run had 3 gaps, all expected.
 
 Rejected: switching the toolkit's issue loop to the workbench tools, as planned. The loop is replaced in phase 3.
 
 Decided on 2026-11-05.
+
+## D14: Every unexpected gap of a proof limits it to `observed`
+
+`prove_regression` counts every unexpected gap of its runs (`expected: false`), whichever tests the gap report names. Each run has its own emulator and runs only the tested specs, so their tests, hooks and app start sent every request of the run. The gap report's test names (SDK 2.3) help find a gap's cause; they do not change the verdict.
+
+Rejected: counting only the gaps the report attributes to a tested spec, or to no test, as the specification's evidence rules said and the workbench did until 0.3.0. In a proof it removes no gap that came from another spec, because no other spec runs. It only drops gaps whose test names differ from the reporter's, for example a spec path relative to another root, and turns `observed` into `regression`.
 
 ## D15: Phase 2 builds the result file and the apply job here, not in the toolkit's loop
 
